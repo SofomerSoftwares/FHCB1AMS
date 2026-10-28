@@ -1,0 +1,822 @@
+# MASTER VIBE-CODING PROMPT
+## ArchiveTrack Ethiopia — Government Physical Archive & Document Request Management System
+
+### 1. Your Role
+
+Act as a senior full-stack software architect, Next.js engineer, MongoDB database designer, UI/UX designer, cybersecurity engineer, and QA engineer.
+
+Build a production-oriented web application called **ArchiveTrack Ethiopia**, designed for Ethiopian government offices to register, locate, request, approve, issue, transfer, and return physical documents.
+
+Do not create only a UI prototype or static dashboard. Implement a functional full-stack application with persistent MongoDB storage, authentication, role-based authorization, validated APIs, audit logging, and complete document lifecycle workflows.
+
+Work incrementally, inspect the existing codebase before making changes, preserve working features, and verify your implementation with tests.
+
+---
+
+### 2. Product Vision
+
+ArchiveTrack Ethiopia replaces paper-based archive registers and manual file tracking with a secure digital system.
+
+The system must answer these questions immediately:
+
+- What is the document's unique reference number?
+- Where is the physical file currently stored?
+- Which department, room, cabinet, shelf, and box contain it?
+- Is it available, reserved, borrowed, missing, or under investigation?
+- Who currently holds the file?
+- Who requested it, and why?
+- Who approved the request?
+- When was it issued, and when is it due?
+- What is the complete history of its movements?
+- Has the document been returned to its designated location?
+
+**Core principle:** Every registered physical file must have traceable custody, an authorized access path, and an auditable history.
+
+Target users include government archive officers, department managers, employees, administrators, and auditors.
+
+The initial deployment is for one government institution, with a design that can support multiple branches and departments in the future.
+
+---
+
+### 3. Required Technology Stack
+
+Use these technologies:
+
+- Next.js App Router with React and TypeScript.
+- TypeScript strict mode.
+- Tailwind CSS and accessible reusable UI components.
+- MongoDB as the primary database.
+- Mongoose for database models, relationships, validation, and indexes.
+- Zod for request validation.
+- Auth.js or another well-maintained authentication solution with secure server-managed sessions.
+- React Hook Form for complex forms.
+- `next-intl` or an equivalent localization framework.
+- Vitest for unit and integration testing.
+- Playwright for end-to-end testing.
+- A maintained QR-code generation library for physical file labels.
+- Lucide icons for the interface.
+
+Use supported, mutually compatible stable package versions. Inspect the existing `package.json` before installing or upgrading dependencies.
+
+Do not introduce a separate backend server unless the existing architecture requires one. Implement server-side business logic in modular services and Next.js Route Handlers.
+
+Do not use mock data as a substitute for production functionality. Seed data may be provided for development and testing only.
+
+---
+
+### 4. Interface and Visual Design
+
+Build a professional, modern government-office interface.
+
+Design requirements:
+
+- Clean administrative dashboard.
+- White and neutral backgrounds with restrained navy or blue accents.
+- Clear typography and accessible contrast.
+- Collapsible sidebar navigation.
+- Top navigation with language switcher, notifications, profile menu, and breadcrumbs.
+- Responsive tables with search, filters, pagination, and sortable columns.
+- Accessible modal dialogs, confirmation dialogs, forms, and status badges.
+- Loading states, empty states, validation messages, and error states.
+- Consistent spacing, typography, buttons, cards, and form controls.
+- Keyboard navigation and screen-reader support.
+- Desktop-first design that remains usable on tablets and mobile devices.
+
+Avoid decorative complexity, unnecessary animations, oversized cards, and generic landing-page aesthetics inside the administrative dashboard.
+
+Create a professional login page and a separate administrative workspace.
+
+### 5. English and Amharic Localization
+
+The entire interface must support English and Amharic.
+
+Use locale-aware routes such as:
+
+- `/en/dashboard`
+- `/am/dashboard`
+- `/en/documents`
+- `/am/documents`
+
+Requirements:
+
+- English is the initial default language.
+- Users can switch between English and Amharic without losing their current page.
+- Translate navigation, buttons, forms, status values, notifications, validation messages, reports, and printable records.
+- Store translations in `messages/en.json` and `messages/am.json`.
+- Use reviewed Amharic translations rather than translating inconsistently in individual components.
+- Support Amharic Unicode text in MongoDB, search fields, reports, and printed labels.
+- Keep document reference numbers and QR identifiers language-independent.
+- Support Gregorian dates initially, with an extensible option for Ethiopian-calendar display.
+- Store timestamps consistently and display them in the institution's configured timezone.
+
+Do not duplicate business logic for each language.
+
+---
+
+### 6. Application Modules
+
+Implement the following modules as functional features.
+
+#### A. Authentication and User Management
+
+Provide:
+
+- Secure login and logout.
+- User account creation by authorized administrators.
+- Password hashing when using password-based authentication.
+- Secure session handling and session expiration.
+- Account activation and deactivation.
+- Password reset through an approved secure workflow.
+- Optional MFA for privileged accounts.
+- User profile and password management.
+- Department assignment and role assignment.
+- Login failure monitoring and rate limiting.
+- Last login and account activity information.
+
+Never include hardcoded production credentials, default shared passwords, or publicly accessible administrative registration.
+
+Create a secure, documented first-administrator provisioning process.
+
+#### B. Department Management
+
+Allow authorized administrators to:
+
+- Create and update departments.
+- Assign department codes and bilingual names.
+- Assign department managers.
+- Associate employees with departments.
+- Configure department-specific access boundaries.
+- Deactivate departments without deleting historical records.
+
+All document and request access must respect the user's department scope.
+
+#### C. Physical Document Registry
+
+Each physical document must have:
+
+- Unique document ID.
+- Human-readable reference number.
+- English title.
+- Amharic title, when available.
+- Description.
+- Category.
+- Department.
+- Document date and registration date.
+- Confidentiality classification.
+- Retention or review date, if applicable.
+- Current physical storage location.
+- Current holder.
+- Current operational status.
+- QR identifier.
+- Registration officer.
+- Creation and update timestamps.
+
+Categories should initially include:
+
+- Personnel.
+- Finance.
+- Legal.
+- Administration.
+- Procurement.
+- Other.
+
+Allow administrators to configure additional categories.
+
+Support:
+
+- Registering a document.
+- Viewing a document's details.
+- Editing authorized metadata.
+- Searching and filtering records.
+- Viewing current location and holder.
+- Printing document labels.
+- Viewing movement history.
+- Marking a document missing through a controlled workflow.
+- Archiving a record according to retention policy.
+
+Prevent duplicate reference numbers. Never physically delete a document record that has associated movement or request history.
+
+#### D. Physical Archive Location Management
+
+Build a hierarchical location system:
+
+Building → Archive Room → Cabinet → Shelf → Box.
+
+Each location must have:
+
+- Unique location code.
+- English and Amharic names.
+- Location type.
+- Parent location.
+- Department or archive ownership.
+- Active/inactive status.
+- Optional description.
+
+Users should be able to navigate locations visually and see which files are stored in each location.
+
+Validate parent-child relationships and prevent circular location hierarchies.
+
+A location cannot be deactivated while it contains files unless those files are first relocated or an explicit, audited archive-transfer procedure is completed.
+
+#### E. Document Search and File Locator
+
+Implement fast, secure search by:
+
+- Reference number.
+- English title.
+- Amharic title.
+- Category.
+- Department.
+- Location code.
+- Current holder.
+- Operational status.
+
+Support filters, pagination, sorting, and clear search results.
+
+Display a structured location such as:
+
+`Head Office / Archive Room 02 / Cabinet B / Shelf 03 / Box 12`
+
+Show the current holder when the file is borrowed.
+
+Do not reveal restricted document titles, holders, or exact storage locations to unauthorized users. Use a generic unauthorized response where necessary to prevent record enumeration.
+
+#### F. Document Request Management
+
+Employees can submit requests containing:
+
+- Document reference.
+- Business purpose.
+- Requesting department.
+- Intended recipient, where applicable.
+- Request date.
+- Requested return date.
+- Priority, if permitted by policy.
+- Optional additional notes.
+
+The system must:
+
+- Generate a unique request number.
+- Verify document existence and user authorization.
+- Check availability.
+- Prevent unauthorized access to confidential documents.
+- Detect conflicting active requests.
+- Display request status and history.
+- Allow cancellation before issuance, subject to policy.
+- Notify the appropriate approver and archive officer.
+
+Employees can view their own requests. Managers can view requests within their authorized departments. Archive officers can manage requests within their archive scope.
+
+#### G. Approval Workflow
+
+Implement configurable approval rules.
+
+Default workflow:
+
+1. Employee submits a request.
+2. System validates the request and checks file availability.
+3. The assigned manager or authorized approver reviews it.
+4. The approver approves or rejects it.
+5. The archive officer verifies the approval and prepares the file.
+6. The officer records the physical handover.
+7. The recipient acknowledges receipt.
+8. The system tracks the due date.
+9. The archive officer verifies the physical return.
+10. The file is returned to an approved storage location.
+
+Record approver, timestamp, decision, and rejection reason.
+
+Separate approval from physical issuance. Do not automatically issue a physical file merely because a request is approved.
+
+Enforce separation of duties according to institutional policy. Administrative privileges must not silently bypass required approval checks.
+
+#### H. File Issue and Return Management
+
+Issuing a file must record:
+
+- Document ID.
+- Request ID.
+- Issuing officer.
+- Recipient.
+- Handover timestamp.
+- Previous storage location.
+- New custody location or holder.
+- Due date.
+- Acknowledgment of receipt.
+
+Returning a file must record:
+
+- Document ID.
+- Request ID.
+- Receiving officer.
+- Return timestamp.
+- Condition on return.
+- Verified destination storage location.
+- Return confirmation.
+
+A successful issue must atomically update the document's holder and status, update the request, and create a movement event and audit event.
+
+A successful return must atomically update the document's location, holder, and status, update the request, and create the corresponding movement and audit events.
+
+Do not allow a client to directly edit the status to bypass these operations.
+
+Prevent two officers from issuing the same physical file concurrently.
+
+If a file is returned to a different authorized location, preserve the original location in history and record the new location.
+
+#### I. File Movement History
+
+Create an append-only history for:
+
+- Initial registration.
+- Initial placement.
+- Relocation.
+- Issue.
+- Return.
+- Transfer between departments.
+- Transfer between archive rooms.
+- Missing-file reports.
+- Recovery of missing files.
+- Approved administrative corrections.
+
+Each movement event must record:
+
+- Document ID.
+- Movement type.
+- Previous location.
+- New location.
+- Previous holder.
+- New holder.
+- Acting user.
+- Timestamp.
+- Related request, when applicable.
+- Reason.
+- Relevant acknowledgment or verification details.
+
+Ordinary users must not edit or delete historical movement events.
+
+Provide a chronological timeline in the document details page.
+
+#### J. Missing File Investigation
+
+Create a separate controlled workflow for missing files.
+
+Allow authorized staff to report a missing file, document the last known location and holder, initiate an investigation, assign responsibility, record investigation notes, and record the resolution.
+
+Preserve all previous history.
+
+A missing file must not be silently marked available or returned. Recovery requires verification by an authorized officer and an auditable resolution.
+
+#### K. Notifications and Overdue Tracking
+
+Provide in-app notifications for:
+
+- New requests.
+- Approval and rejection.
+- File ready for collection.
+- Issued files approaching their due dates.
+- Overdue files.
+- Return confirmation.
+- Missing-file investigations.
+- Important administrative changes.
+
+Implement an overdue dashboard and configurable reminder rules.
+
+Calculate overdue status from the due date and current state. Do not automatically change a document's custody status simply because it is overdue.
+
+If email notifications are added, use configured institutional email credentials and do not expose secrets in source code.
+
+#### L. Dashboard and Reporting
+
+Build role-specific dashboards.
+
+Display relevant metrics:
+
+- Total registered documents.
+- Available documents.
+- Borrowed documents.
+- Pending requests.
+- Requests awaiting approval.
+- Overdue files.
+- Missing files under investigation.
+- Recent file movements.
+- Department activity.
+
+Build reports for:
+
+- Document inventory.
+- Current storage locations.
+- Borrowed files and holders.
+- Overdue files.
+- Requests by status.
+- Request approval history.
+- Movement history.
+- Missing-file investigations.
+- User activity and audit events.
+
+Support date-range, department, category, and status filters.
+
+Provide printable reports and controlled CSV exports. Exports must enforce the same access controls as the application.
+
+Ensure all dashboard figures are calculated from real database records, not hardcoded values.
+
+---
+
+### 7. Database Design
+
+Use Mongoose models for the following collections:
+
+1. `User`
+2. `Department`
+3. `Document`
+4. `ArchiveLocation`
+5. `DocumentRequest`
+6. `FileMovement`
+7. `AuditLog`
+8. `Notification`
+
+Use references between collections rather than duplicating large embedded records.
+
+Create appropriate unique indexes, compound indexes, and query indexes.
+
+At minimum:
+
+- Unique document reference number.
+- Unique QR identifier.
+- Unique location code.
+- Unique request number.
+- Search indexes appropriate to actual query patterns.
+- Indexes on document status, department, current location, and current holder.
+- Indexes on request status, requester, document, and due date.
+- Indexes on movement document ID and timestamp.
+- Indexes on audit actor and timestamp.
+
+Use transactions for multi-document workflow operations. Require a MongoDB replica set or another deployment configuration that supports transactions.
+
+Use conditional updates or transaction-safe conflict checks to prevent concurrent issue operations.
+
+Avoid relying exclusively on Mongoose schema validation for security. Enforce authorization and business rules in the service layer.
+
+Store timestamps consistently. Preserve historical records when users, departments, or locations are deactivated.
+
+#### Document status values
+
+- `AVAILABLE`
+- `RESERVED`
+- `BORROWED`
+- `MISSING`
+- `UNDER_INVESTIGATION`
+- `ARCHIVED`
+
+#### Request status values
+
+- `PENDING`
+- `APPROVED`
+- `REJECTED`
+- `ISSUED`
+- `RETURNED`
+- `CANCELLED`
+
+Implement explicit state-transition rules. Reject invalid transitions with appropriate HTTP status codes.
+
+---
+
+### 8. Roles and Permissions
+
+Implement the following roles:
+
+**ADMIN**
+- Manage users, roles, departments, configuration, and authorized reports.
+- View administrative audit information.
+- Cannot delete or rewrite movement history.
+- Must not bypass institutional approval rules implicitly.
+
+**ARCHIVE_OFFICER**
+- Register documents.
+- Manage authorized archive locations.
+- Search authorized documents.
+- Process approved issues and verified returns.
+- Review relevant movement history.
+- Report missing files.
+
+**DEPARTMENT_MANAGER**
+- View authorized department records.
+- Approve or reject requests within the manager's scope.
+- Monitor borrowed and overdue files.
+
+**EMPLOYEE**
+- Search permitted records.
+- Submit requests.
+- View personal request history.
+- Receive notifications.
+- Acknowledge receipt when assigned as recipient.
+
+**AUDITOR**
+- Read authorized inventory, movement history, approval records, and audit reports.
+- Cannot issue files, approve requests, or modify historical records.
+
+Implement granular permissions such as:
+
+- `users:manage`
+- `documents:register`
+- `documents:read`
+- `documents:update`
+- `documents:request`
+- `requests:approve`
+- `files:issue`
+- `files:return`
+- `movements:read`
+- `reports:read`
+- `audit:read`
+
+Always validate the user's identity, permissions, department scope, confidentiality clearance, and record ownership on the server.
+
+Never rely on client-side role checks alone.
+
+---
+
+### 9. Security Requirements
+
+Treat all archive metadata as potentially sensitive.
+
+Implement:
+
+- Secure session cookies with appropriate `HttpOnly`, `Secure`, and `SameSite` settings.
+- Password hashing using a suitable maintained algorithm if passwords are stored locally.
+- Session expiration and revocation.
+- Server-side authorization for every protected action.
+- Input validation with Zod.
+- Database access through controlled server-side services.
+- Rate limiting for authentication and sensitive operations.
+- CSRF protection where applicable to the authentication and request model.
+- Secure HTTP headers.
+- Protection against injection and mass-assignment vulnerabilities.
+- Safe handling of MongoDB identifiers.
+- Least-privilege database credentials.
+- TLS for production connections.
+- Private network database access.
+- Encrypted backups.
+- Controlled audit-log access.
+- Error responses that do not disclose stack traces, secrets, or restricted record details.
+- Environment variables for credentials and connection strings.
+- A secure administrator provisioning script.
+- Dependency vulnerability checks.
+
+Do not store production secrets in the repository.
+
+Do not expose MongoDB credentials, signing keys, session tokens, or internal stack traces to the browser.
+
+Do not provide public access to administrative APIs.
+
+Do not implement a generic endpoint that permits arbitrary status changes.
+
+Keep audit events separate from ordinary editable business records. Restrict database-level permissions so the application cannot casually rewrite historical events. Consider external, separately controlled log retention for higher-assurance deployments.
+
+Before production deployment, document the institution's security, data residency, retention, and access-control requirements.
+
+---
+
+### 10. Project Structure
+
+Use a modular structure similar to:
+
+app/
+  [locale]/
+    login/
+    dashboard/
+    documents/
+    locations/
+    requests/
+    approvals/
+    movements/
+    investigations/
+    reports/
+    users/
+    departments/
+    settings/
+  api/
+    auth/
+    documents/
+    locations/
+    requests/
+    reports/
+    notifications/
+
+components/
+  layout/
+  dashboard/
+  documents/
+  locations/
+  requests/
+  approvals/
+  movements/
+  reports/
+  ui/
+
+features/
+  auth/
+  users/
+  departments/
+  documents/
+  locations/
+  requests/
+  approvals/
+  movements/
+  investigations/
+  notifications/
+  reports/
+
+lib/
+  db.ts
+  auth/
+  permissions/
+  validation/
+  audit/
+  i18n/
+  security/
+  utils/
+
+models/
+  User.ts
+  Department.ts
+  Document.ts
+  ArchiveLocation.ts
+  DocumentRequest.ts
+  FileMovement.ts
+  AuditLog.ts
+  Notification.ts
+
+messages/
+  en.json
+  am.json
+
+tests/
+  unit/
+  integration/
+  e2e/
+
+scripts/
+  create-initial-admin.ts
+  seed-development.ts
+
+Keep components presentational when possible. Keep business logic in services and data access in repositories. Avoid oversized page components and duplicated permission logic.
+
+---
+
+### 11. Development Phases
+
+Implement the project in the following order.
+
+**Phase 1 — Foundation**
+- Inspect the project and existing dependencies.
+- Configure Next.js, TypeScript, Tailwind CSS, and MongoDB.
+- Set up environment validation.
+- Implement authentication, sessions, and authorization.
+- Create the bilingual application shell.
+- Implement users, roles, and departments.
+- Build initial tests.
+
+**Phase 2 — Document Registry**
+- Implement document and location schemas.
+- Build document registration and editing.
+- Build location hierarchy management.
+- Add search, filters, pagination, and QR generation.
+- Implement initial placement and audit records.
+- Test duplicate prevention and department access.
+
+**Phase 3 — Request and Approval Workflow**
+- Implement request submission and validation.
+- Implement approval and rejection.
+- Add notifications.
+- Implement controlled issue and return operations.
+- Add transactional database updates.
+- Test concurrency and invalid state transitions.
+
+**Phase 4 — Custody and Investigation**
+- Implement movement timelines.
+- Add missing-file investigations.
+- Implement overdue tracking.
+- Add return-condition records.
+- Test historical integrity and recovery workflows.
+
+**Phase 5 — Dashboard and Reports**
+- Implement role-specific dashboards.
+- Add inventory and custody reports.
+- Add overdue and approval reports.
+- Add controlled CSV export and printable reports.
+- Verify that metrics reflect actual database data.
+
+**Phase 6 — Hardening and Deployment**
+- Run unit, integration, and end-to-end tests.
+- Test permission boundaries and session security.
+- Test concurrent issue and return attempts.
+- Validate bilingual interfaces.
+- Test database backups and restoration.
+- Document production environment variables.
+- Create deployment instructions and a release checklist.
+- Conduct a pilot with representative, approved archive records.
+
+Do not move a phase to complete merely because the UI renders. Verify the relevant business rules and tests.
+
+---
+
+### 12. Testing Requirements
+
+Write tests for:
+
+- Authentication and session expiration.
+- Unauthorized route access.
+- Department-level access control.
+- Confidentiality restrictions.
+- Duplicate document reference numbers.
+- Duplicate QR identifiers.
+- Duplicate request numbers.
+- Valid and invalid request transitions.
+- Approval permissions.
+- Issue permissions.
+- Double-issue prevention under concurrency.
+- Return confirmation and location restoration.
+- Movement-history preservation.
+- Missing-file investigation and recovery.
+- Overdue calculations.
+- Notification permissions.
+- English and Amharic rendering.
+- Audit-event creation.
+- Failed transaction rollback.
+- Backup restoration procedures.
+
+Use isolated test data and a dedicated test database. Never run destructive tests against production records.
+
+---
+
+### 13. Acceptance Criteria
+
+The application is ready for a controlled pilot only when:
+
+1. An authorized officer can register a physical file and assign a storage location.
+2. Staff can search for a permitted file and see its correct current location.
+3. An employee can submit a request and follow its status.
+4. An authorized manager can approve or reject a request.
+5. An archive officer can record a verified physical handover.
+6. The file's current holder and status update consistently.
+7. A return updates the holder, storage location, and request status.
+8. Every movement is preserved in the history.
+9. Concurrent issue attempts cannot assign the same file twice.
+10. Unauthorized users cannot access restricted document metadata.
+11. Audit events are protected from ordinary application modifications.
+12. Overdue and missing-file reports use actual database records.
+13. English and Amharic interfaces work throughout the application.
+14. Automated tests pass, and backup restoration has been tested.
+15. Production setup and operational documentation are complete.
+
+---
+
+### 14. Required Deliverables
+
+Produce:
+
+- A complete Next.js application.
+- Functional bilingual administrative dashboard.
+- Authentication and authorization implementation.
+- MongoDB models and indexes.
+- Document and location management.
+- Request and approval workflows.
+- Issue, return, and movement-history services.
+- Missing-file investigation workflow.
+- Notifications and reports.
+- English and Amharic translation files.
+- Secure initial-administrator provisioning.
+- Development-only seed data.
+- Unit, integration, and end-to-end tests.
+- `.env.example` without real secrets.
+- README with installation, development, testing, and deployment instructions.
+- Database backup and recovery instructions.
+- Security configuration checklist.
+- Government-office user acceptance testing guide.
+
+---
+
+### 15. Instructions for the AI Coding Agent
+
+Begin by inspecting the repository, identifying the framework and dependencies, and determining which features already exist.
+
+If the repository is empty, scaffold the application using the required architecture.
+
+If the repository already contains code, preserve existing working functionality and make incremental changes rather than replacing the entire codebase unnecessarily.
+
+Before each phase:
+1. State the implementation objective.
+2. Identify the relevant files.
+3. Implement the feature.
+4. Run the applicable checks and tests.
+5. Fix errors before proceeding.
+6. Summarize changed files and completed functionality.
+7. List remaining issues honestly.
+
+Do not invent test results, claim unimplemented features are complete, or silently substitute mock data for real functionality.
+
+Do not leave critical security checks as TODOs. If a required external service is unavailable, implement a clearly documented interface and explain the limitation.
+
+Prioritize correctness, auditability, security, maintainability, and reliable physical file custody over unnecessary features.
+
+**Start now with repository inspection and Phase 1. Build the actual application, not merely a proposal, a static mockup, or an architecture document.**
