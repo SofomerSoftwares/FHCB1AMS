@@ -36,7 +36,7 @@ interface DashboardViewProps {
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const { t, locale, isAmharic } = useLanguage();
-  const { user, token } = useAuth();
+  const { user, token, logout } = useAuth();
 
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
@@ -45,12 +45,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const [loading, setLoading] = useState<boolean>(true);
 
   const fetchDashboardData = async () => {
-    if (!token) return;
+    if (!token || token === 'null' || token === 'undefined') return;
     setLoading(true);
     try {
       const res = await fetch('/api/reports/summary', {
+        credentials: 'include',
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401) {
+        logout();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setMetrics(data.metrics);

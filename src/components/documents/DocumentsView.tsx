@@ -53,7 +53,7 @@ import {
 
 export const DocumentsView: React.FC = () => {
   const { t, locale, isAmharic } = useLanguage();
-  const { user, token, hasRole } = useAuth();
+  const { user, token, hasRole, logout } = useAuth();
   const { notify } = useNotification();
 
   const [documents, setDocuments] = useState<any[]>([]);
@@ -230,7 +230,10 @@ export const DocumentsView: React.FC = () => {
 
   // Fetch list of documents via server-side combined query
   const fetchDocuments = useCallback(async () => {
-    if (!token) return;
+    if (!token || token === 'null' || token === 'undefined') {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setErrorState(null);
     try {
@@ -250,22 +253,32 @@ export const DocumentsView: React.FC = () => {
       params.append('limit', limit.toString());
 
       const res = await fetch(`/api/documents?${params.toString()}`, {
+        credentials: 'include',
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) {
-        throw new Error(`Failed to fetch documents: HTTP ${res.status}`);
+
+      if (res.status === 401) {
+        logout();
+        return;
       }
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setErrorState(errData.error || `Failed to fetch documents: HTTP ${res.status}`);
+        return;
+      }
+
       const data = await res.json();
       setDocuments(data.documents || []);
       setTotalCount(data.total || 0);
     } catch (err: any) {
-      console.error(err);
       setErrorState(err.message || 'Error loading records.');
     } finally {
       setLoading(false);
     }
   }, [
     token,
+    logout,
     search,
     category,
     status,
@@ -283,13 +296,19 @@ export const DocumentsView: React.FC = () => {
 
   // Fetch auxiliary locations, departments, and users
   const fetchAuxData = async () => {
-    if (!token) return;
+    if (!token || token === 'null' || token === 'undefined') return;
     try {
       const [locRes, deptRes, userRes] = await Promise.all([
-        fetch('/api/locations', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/departments', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/locations', { credentials: 'include', headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/departments', { credentials: 'include', headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/users', { credentials: 'include', headers: { Authorization: `Bearer ${token}` } }),
       ]);
+
+      if (locRes.status === 401 || deptRes.status === 401 || userRes.status === 401) {
+        logout();
+        return;
+      }
+
       if (locRes.ok) {
         const locData = await locRes.json();
         setLocations(locData.locations || []);
@@ -309,7 +328,7 @@ export const DocumentsView: React.FC = () => {
         setStaffUsers(userData.users || []);
       }
     } catch (err) {
-      console.error(err);
+      console.warn('Auxiliary data fetch error:', err);
     }
   };
 
@@ -368,8 +387,13 @@ export const DocumentsView: React.FC = () => {
     if (!token) return;
     try {
       const res = await fetch(`/api/documents/${docId}`, {
+        credentials: 'include',
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401) {
+        logout();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setSelectedDoc(data.document);
@@ -1076,8 +1100,8 @@ export const DocumentsView: React.FC = () => {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={
                   isAmharic
-                    ? 'በመለያ ቁጥር፣ በርዕስ፣ በአድራሻ፣ በመደርደሪያ ወይም በሳጥን ፈልግ...'
-                    : 'Search by reference number, title, address, shelf, box, tags...'
+                    ? 'በንብረት መለያ ቁጥር (Property ID)፣ በርዕስ፣ በአድራሻ፣ በመደርደሪያ ወይም በሳጥን ፈልግ...'
+                    : 'Search by Property ID, title, address, shelf, box, tags...'
                 }
                 className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-4 text-xs placeholder-slate-400 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
               />
@@ -2099,7 +2123,7 @@ export const DocumentsView: React.FC = () => {
                       type="button"
                       onClick={() => handleAutoGenerateRef()}
                       className="absolute right-2 top-2 p-1 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded transition"
-                      title="Regenerate Reference Number"
+                      title={isAmharic ? 'የንብረት መለያ ቁጥር (Property ID) እንደገና አፍልቅ' : 'Regenerate Property ID'}
                     >
                       <RefreshCw className={`h-3.5 w-3.5 ${isGeneratingRef ? 'animate-spin text-emerald-600' : ''}`} />
                     </button>
@@ -2469,7 +2493,7 @@ export const DocumentsView: React.FC = () => {
               <Sparkles className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
               <div className="space-y-0.5">
                 <p className="font-semibold">
-                  {isAmharic ? 'የማጣቀሻ ቁጥር በራስ-ሰር ይፈጠራል' : 'Auto Reference Number Generation'}
+                  {isAmharic ? 'የንብረት መለያ ቁጥር (Property ID) በራስ-ሰር ይፈጠራል' : 'Auto Property ID Generation'}
                 </p>
                 <p className="text-[11px] text-blue-800">
                   {t('importCsv.autoRefNotice')}
@@ -2599,7 +2623,7 @@ export const DocumentsView: React.FC = () => {
                       <tr>
                         <th className="px-3 py-2">#</th>
                         <th className="px-3 py-2">Status</th>
-                        <th className="px-3 py-2">Reference Number</th>
+                        <th className="px-3 py-2">{isAmharic ? 'የንብረት መለያ ቁጥር' : 'Property ID'}</th>
                         <th className="px-3 py-2">Category</th>
                         <th className="px-3 py-2">Titles</th>
                         <th className="px-3 py-2">Dept / Location</th>

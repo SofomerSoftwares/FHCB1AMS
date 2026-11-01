@@ -27,7 +27,7 @@ import { IArchiveLocation } from '../../types';
 
 export const RequestsView: React.FC = () => {
   const { t, locale, isAmharic } = useLanguage();
-  const { user, token, hasRole, hasPermission, settings } = useAuth();
+  const { user, token, hasRole, hasPermission, settings, logout } = useAuth();
   const { notify } = useNotification();
 
   const [requests, setRequests] = useState<any[]>([]);
@@ -82,13 +82,18 @@ export const RequestsView: React.FC = () => {
   const [fastSubmitSuccess, setFastSubmitSuccess] = useState<string>('');
 
   const fetchRequests = async () => {
-    if (!token) return;
+    if (!token || token === 'null' || token === 'undefined') return;
     setLoading(true);
     try {
       const [reqRes, locRes] = await Promise.all([
-        fetch('/api/requests', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/locations', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/requests', { credentials: 'include', headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/locations', { credentials: 'include', headers: { Authorization: `Bearer ${token}` } }),
       ]);
+
+      if (reqRes.status === 401 || locRes.status === 401) {
+        logout();
+        return;
+      }
 
       if (reqRes.ok) {
         const data = await reqRes.json();
@@ -99,7 +104,7 @@ export const RequestsView: React.FC = () => {
         setLocations(locData.locations || []);
       }
     } catch (err) {
-      console.error(err);
+      console.warn('Error loading requests:', err);
     } finally {
       setLoading(false);
     }

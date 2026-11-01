@@ -345,27 +345,39 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     switch (type) {
       case 'SUCCESS':
         return {
-          border: 'border-emerald-500 bg-emerald-50 text-emerald-900',
-          icon: <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />,
-          badge: 'bg-emerald-600 text-white',
+          container: 'border-emerald-500/40 bg-white/95 text-slate-900 shadow-xl shadow-emerald-950/10 dark:bg-slate-900 dark:text-white',
+          accentBar: 'bg-emerald-600',
+          iconBg: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400',
+          icon: <CheckCircle2 className="h-5 w-5" />,
+          badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+          badgeText: isAmharic ? 'ተሳክቷል' : 'Success',
         };
       case 'WARNING':
         return {
-          border: 'border-amber-500 bg-amber-50 text-amber-900',
-          icon: <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />,
-          badge: 'bg-amber-600 text-white',
+          container: 'border-amber-500/40 bg-white/95 text-slate-900 shadow-xl shadow-amber-950/10 dark:bg-slate-900 dark:text-white',
+          accentBar: 'bg-amber-500',
+          iconBg: 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-400',
+          icon: <AlertTriangle className="h-5 w-5" />,
+          badge: 'bg-amber-100 text-amber-800 border-amber-200',
+          badgeText: isAmharic ? 'ማስጠንቀቂያ' : 'Warning',
         };
       case 'ALERT':
         return {
-          border: 'border-rose-500 bg-rose-50 text-rose-900',
-          icon: <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />,
-          badge: 'bg-rose-600 text-white',
+          container: 'border-rose-500/40 bg-white/95 text-slate-900 shadow-xl shadow-rose-950/10 dark:bg-slate-900 dark:text-white',
+          accentBar: 'bg-rose-600',
+          iconBg: 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-400',
+          icon: <AlertCircle className="h-5 w-5" />,
+          badge: 'bg-rose-100 text-rose-800 border-rose-200',
+          badgeText: isAmharic ? 'አስቸኳይ' : 'Urgent Alert',
         };
       default:
         return {
-          border: 'border-blue-500 bg-blue-50 text-blue-900',
-          icon: <Info className="h-5 w-5 text-blue-600 shrink-0" />,
-          badge: 'bg-blue-600 text-white',
+          container: 'border-blue-500/40 bg-white/95 text-slate-900 shadow-xl shadow-blue-950/10 dark:bg-slate-900 dark:text-white',
+          accentBar: 'bg-blue-600',
+          iconBg: 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-400',
+          icon: <Info className="h-5 w-5" />,
+          badge: 'bg-blue-100 text-blue-800 border-blue-200',
+          badgeText: isAmharic ? 'መረጃ' : 'Info',
         };
     }
   };
@@ -393,32 +405,63 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     >
       {children}
 
-      {/* Floating In-App Toast Notification Stack */}
-      <div className="fixed top-20 right-4 z-50 flex flex-col space-y-2.5 max-w-sm w-full pointer-events-none">
+      {/* Floating In-App Toast Popup Notification Stack */}
+      <div className="fixed top-20 right-4 z-50 flex flex-col space-y-3 max-w-sm w-full pointer-events-none">
         {toasts.map((toast) => {
           const style = getTypeStyle(toast.type);
           return (
             <div
               key={toast.id}
-              className={`pointer-events-auto rounded-xl border p-3.5 shadow-xl transition-all duration-300 ease-out transform translate-y-0 backdrop-blur-md ${style.border}`}
+              className={`pointer-events-auto relative overflow-hidden rounded-xl border p-4 shadow-2xl backdrop-blur-md transition-all duration-300 ease-out transform translate-y-0 animate-in fade-in slide-in-from-top-4 ${style.container}`}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-start space-x-2.5">
-                  {style.icon}
-                  <div>
-                    <h4 className="text-xs font-bold leading-tight">{toast.title}</h4>
-                    <p className="mt-1 text-xs opacity-90 leading-relaxed">{toast.message}</p>
-                    <span className="mt-1.5 block text-[10px] opacity-60">
-                      {new Date(toast.timestamp).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
+              {/* Left accent indicator bar */}
+              <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${style.accentBar}`} />
+
+              <div className="flex items-start justify-between gap-3 pl-1.5">
+                <div className="flex items-start space-x-3">
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-xs ${style.iconBg}`}>
+                    {style.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-2">
+                      <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-bold border uppercase tracking-wider ${style.badge}`}>
+                        {style.badgeText}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        {new Date(toast.timestamp).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+
+                    <h4 className="mt-1 text-xs font-bold leading-tight text-slate-900 truncate">
+                      {toast.title}
+                    </h4>
+                    <p className="mt-1 text-xs text-slate-600 leading-relaxed line-clamp-3">
+                      {toast.message}
+                    </p>
+
+                    {toast.link && (
+                      <button
+                        onClick={() => {
+                          if (toast.link) {
+                            window.location.hash = toast.link;
+                            removeToast(toast.id);
+                          }
+                        }}
+                        className="mt-2 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline flex items-center space-x-1"
+                      >
+                        <span>{isAmharic ? 'ዝርዝር ተመልከት' : 'View Details'}</span>
+                        <span>→</span>
+                      </button>
+                    )}
                   </div>
                 </div>
+
                 <button
                   onClick={() => removeToast(toast.id)}
-                  className="rounded-md p-1 opacity-60 hover:opacity-100 hover:bg-black/5 transition"
+                  className="rounded-lg p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
                   aria-label="Close notification"
                 >
                   <X className="h-4 w-4" />
