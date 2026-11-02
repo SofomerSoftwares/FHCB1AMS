@@ -1,0 +1,29 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fhc-archive-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - JWT_SECRET=archivetrack_local_secure_docker_secret_key_2026!
+      # Uncomment if connecting to external or companion MongoDB service:
+      # - MONGODB_URI=mongodb://mongo:27017/archivetrack_ethiopia
+    volumes:
+      # Persist physical archive documents, movement history, and audit logs locally
+      - archive_data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+# Persistent volume for local embedded database storage
+volumes:
+  archive_data:
+    driver: local
