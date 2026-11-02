@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
+import mysql from 'mysql2/promise';
 import {
   IUser,
   IDepartment,
@@ -145,7 +146,30 @@ class DatabaseStore {
   };
 
   private isConnectedToMongo: boolean = false;
+  private isConnectedToMySQL: boolean = false;
+  private mysqlPool: mysql.Pool | null = null;
   private isInitialized: boolean = false;
+
+  public getDatabaseStatus(): {
+    isMySQL: boolean;
+    isMongo: boolean;
+    engine: 'mysqli/mysql' | 'mongodb' | 'embedded';
+    connectionString: string;
+  } {
+    const mysqlHost = process.env.MYSQL_HOST || '127.0.0.1';
+    const mysqlDb = process.env.MYSQL_DATABASE || 'archivetrack_ethiopia';
+    const mysqlUser = process.env.MYSQL_USER || 'root';
+    const mysqlPort = process.env.MYSQL_PORT || '3306';
+
+    return {
+      isMySQL: this.isConnectedToMySQL,
+      isMongo: this.isConnectedToMongo,
+      engine: this.isConnectedToMySQL ? 'mysqli/mysql' : this.isConnectedToMongo ? 'mongodb' : 'embedded',
+      connectionString: this.isConnectedToMySQL
+        ? `mysqli://${mysqlUser}@${mysqlHost}:${mysqlPort}/${mysqlDb}`
+        : (process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/archivetrack_ethiopia'),
+    };
+  }
 
   constructor() {
     this.ensureDataDirectory();
@@ -164,16 +188,51 @@ class DatabaseStore {
   public async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
-    // Try MongoDB connection if configured
-    const mongoUri = process.env.MONGODB_URI;
-    if (mongoUri && mongoUri.startsWith('mongodb')) {
-      try {
-        await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 2000 });
-        this.isConnectedToMongo = true;
-        console.log('Successfully connected to MongoDB replica/instance:', mongoUri);
-      } catch (err) {
-        console.warn('MongoDB connection failed, using high-performance persistent embedded store:', (err as Error).message);
-        this.isConnectedToMongo = false;
+    // 1. Try MySQL / MySQLi Connection
+    const mysqlHost = process.env.MYSQL_HOST || '127.0.0.1';
+    const mysqlUser = process.env.MYSQL_USER || 'root';
+    const mysqlPassword = process.env.MYSQL_PASSWORD || '';
+    const mysqlDatabase = process.env.MYSQL_DATABASE || 'archivetrack_ethiopia';
+    const mysqlPort = parseInt(process.env.MYSQL_PORT || '3306', 10);
+
+    try {
+      this.mysqlPool = mysql.createPool({
+        host: mysqlHost,
+        user: mysqlUser,
+        password: mysqlPassword,
+        database: mysqlDatabase,
+        port: mysqlPort,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        connectTimeout: 2000,
+      });
+
+      const [rows] = await this.mysqlPool.query('SELECT 1 + 1 AS solution');
+      if (rows) {
+        this.isConnectedToMySQL = true;
+        console.log(`Successfully connected to MySQL/MySQLi relational database at ${mysqlHost}:${mysqlPort}/${mysqlDatabase}`);
+      }
+    } catch (mysqlErr: any) {
+      this.isConnectedToMySQL = false;
+      this.mysqlPool = null;
+      console.warn(`MySQL/MySQLi connection at ${mysqlHost}:${mysqlPort} not active (${mysqlErr.message}), trying backup storage layers...`);
+    }
+
+    // 2. Try MongoDB fallback if MySQL is not available
+    if (!this.isConnectedToMySQL) {
+      const mongoUri = process.env.MONGODB_URI;
+      if (mongoUri && mongoUri.startsWith('mongodb')) {
+        try {
+          const isSrv = mongoUri.startsWith('mongodb+srv://');
+          const connectOpts = isSrv ? { serverSelectionTimeoutMS: 2000 } : { serverSelectionTimeoutMS: 2000, directConnection: true };
+          await mongoose.connect(mongoUri, connectOpts);
+          this.isConnectedToMongo = true;
+          console.log('Successfully connected to MongoDB instance:', mongoUri);
+        } catch (err) {
+          console.warn('MongoDB connection fallback not available, using persistent embedded store:', (err as Error).message);
+          this.isConnectedToMongo = false;
+        }
       }
     }
 
@@ -1144,6 +1203,93 @@ class DatabaseStore {
       return `${loc.code} (Box ${loc.boxNumber})`;
     }
     return loc.code;
+  }
+
+  public deleteLocation(id: string): { success: boolean; error?: string } {
+    const loc = this.getLocationById(id);
+    if (!loc) return { success: false, error: 'Location not found.' };
+
+    // Check if any documents are stored in this location or associated shelf/box
+    const docsInLoc = this.data.documents.filter(
+      (d) =>
+        d.currentLocationId === id ||
+        (loc.type === 'SHELF' && loc.shelfNumber && d.shelfNumber === loc.shelfNumber) ||
+        (loc.type === 'BOX' && loc.boxNumber && d.boxNumber === loc.boxNumber)
+    );
+
+    if (docsInLoc.length > 0) {
+      return {
+        success: false,
+        error: `Cannot delete location '${loc.code}': ${docsInLoc.length} file(s) are currently stored in this location. Relocate or delete files first.`,
+      };
+    }
+
+    // Check if this location has child locations (e.g. Building has Rooms, Room has Cabinets, Shelf has Boxes)
+    const childLocations = this.data.locations.filter((l) => l.parentId === id);
+    if (childLocations.length > 0) {
+      return {
+        success: false,
+        error: `Cannot delete location '${loc.code}': It contains ${childLocations.length} sub-location(s). Remove child units first.`,
+      };
+    }
+
+    this.data.locations = this.data.locations.filter((l) => l.id !== id);
+    this.saveToDisk();
+    return { success: true };
+  }
+
+  public deleteLocations(ids: string[]): {
+    deletedCount: number;
+    failedList: Array<{ id: string; code: string; reason: string }>;
+  } {
+    const failedList: Array<{ id: string; code: string; reason: string }> = [];
+    const deletableIds = new Set<string>();
+
+    for (const id of ids) {
+      const loc = this.getLocationById(id);
+      if (!loc) continue;
+
+      const docsInLoc = this.data.documents.filter(
+        (d) =>
+          d.currentLocationId === id ||
+          (loc.type === 'SHELF' && loc.shelfNumber && d.shelfNumber === loc.shelfNumber) ||
+          (loc.type === 'BOX' && loc.boxNumber && d.boxNumber === loc.boxNumber)
+      );
+
+      if (docsInLoc.length > 0) {
+        failedList.push({
+          id,
+          code: loc.code,
+          reason: `Contains ${docsInLoc.length} active physical file(s).`,
+        });
+        continue;
+      }
+
+      // Check if any child locations exist that are NOT included in the deletion batch
+      const remainingChildren = this.data.locations.filter(
+        (l) => l.parentId === id && !ids.includes(l.id)
+      );
+      if (remainingChildren.length > 0) {
+        failedList.push({
+          id,
+          code: loc.code,
+          reason: `Contains ${remainingChildren.length} child location(s) not marked for deletion.`,
+        });
+        continue;
+      }
+
+      deletableIds.add(id);
+    }
+
+    if (deletableIds.size > 0) {
+      this.data.locations = this.data.locations.filter((l) => !deletableIds.has(l.id));
+      this.saveToDisk();
+    }
+
+    return {
+      deletedCount: deletableIds.size,
+      failedList,
+    };
   }
 
   // --- Documents Accessors & Combined Filter Search ---

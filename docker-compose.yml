@@ -1,4 +1,5 @@
 services:
+  # FHC Branch One Physical Archive Application Service
   app:
     build:
       context: .
@@ -7,14 +8,20 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
     environment:
       - NODE_ENV=production
       - PORT=3000
       - JWT_SECRET=archivetrack_local_secure_docker_secret_key_2026!
-      # Uncomment if connecting to external or companion MongoDB service:
-      # - MONGODB_URI=mongodb://mongo:27017/archivetrack_ethiopia
+      # MySQL / MySQLi Connection Configuration
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=rootpassword
+      - MYSQL_DATABASE=archivetrack_ethiopia
     volumes:
-      # Persist physical archive documents, movement history, and audit logs locally
       - archive_data:/app/data
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
@@ -23,7 +30,41 @@ services:
       retries: 3
       start_period: 10s
 
-# Persistent volume for local embedded database storage
+  # Local MySQL / MySQLi Database Container Service
+  mysql:
+    image: mysql:8.0
+    container_name: fhc-archive-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=archivetrack_ethiopia
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Optional phpMyAdmin Web Interface for MySQL Management
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: fhc-archive-phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      - PMA_HOST=mysql
+      - PMA_PORT=3306
+    depends_on:
+      - mysql
+
 volumes:
   archive_data:
+    driver: local
+  mysql_data:
     driver: local

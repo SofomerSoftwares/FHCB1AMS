@@ -26,7 +26,18 @@ const LoginSchema = z.object({
 });
 
 apiRouter.get('/health', (_req, res) => {
-  return res.json({ status: 'ok', uptime: process.uptime(), time: new Date().toISOString() });
+  const dbStatus = db.getDatabaseStatus();
+  return res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    time: new Date().toISOString(),
+    database: {
+      connectedToMySQL: dbStatus.isMySQL,
+      connectedToMongo: dbStatus.isMongo,
+      storageEngine: dbStatus.engine,
+      targetConnection: dbStatus.connectionString,
+    },
+  });
 });
 
 apiRouter.post('/auth/login', async (req, res) => {
@@ -496,6 +507,70 @@ apiRouter.put('/locations/:id', authMiddleware, requireRole('ADMIN', 'ARCHIVE_OF
 
   logAudit(req.user!, 'LOCATION_UPDATED', 'LOCATION', id, `Updated location ${updated.code}`, req);
   return res.json({ location: updated });
+});
+
+// Single Archive Location Deletion
+apiRouter.delete('/locations/:id', authMiddleware, requireRole('ADMIN', 'ARCHIVE_OFFICER'), (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const loc = db.getLocationById(id);
+    if (!loc) {
+      return res.status(404).json({ error: 'Archive location not found.' });
+    }
+
+    const result = db.deleteLocation(id);
+    if (!result.success) {
+      return res.status(409).json({ error: result.error });
+    }
+
+    logAudit(
+      req.user!,
+      'LOCATION_DELETED',
+      'LOCATION',
+      id,
+      `Permanently removed archive location [${loc.code}] (${loc.nameEn || loc.type})`,
+      req
+    );
+
+    return res.json({
+      success: true,
+      message: `Location [${loc.code}] removed successfully.`,
+      deletedId: id,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to delete archive location.' });
+  }
+});
+
+// Batch Archive Location Deletion
+apiRouter.post('/locations/batch-delete', authMiddleware, requireRole('ADMIN', 'ARCHIVE_OFFICER'), (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { locationIds } = req.body;
+    if (!Array.isArray(locationIds) || locationIds.length === 0) {
+      return res.status(400).json({ error: 'Please provide an array of location IDs to delete.' });
+    }
+
+    const { deletedCount, failedList } = db.deleteLocations(locationIds);
+
+    logAudit(
+      req.user!,
+      'LOCATION_BATCH_DELETED',
+      'LOCATION',
+      'BATCH',
+      `Permanently removed ${deletedCount} archive storage units. Failed: ${failedList.length}`,
+      req
+    );
+
+    return res.json({
+      success: true,
+      deletedCount,
+      failedCount: failedList.length,
+      failedList,
+      message: `Removed ${deletedCount} location unit(s). ${failedList.length > 0 ? `${failedList.length} could not be removed because they contain files or dependent sub-locations.` : ''}`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to batch delete archive locations.' });
+  }
 });
 
 // ==========================================
