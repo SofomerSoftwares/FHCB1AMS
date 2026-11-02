@@ -16,6 +16,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBadge } from '../ui/StatusBadge';
 import { formatBilingualDate } from '../../lib/ethiopianCalendar';
+import { safeJson } from '../../lib/apiUtils';
 
 interface DashboardMetrics {
   totalDocuments: number;
@@ -50,15 +51,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     try {
       const res = await fetch('/api/reports/summary', {
         credentials: 'include',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       });
       if (res.status === 401) {
         logout();
         return;
       }
-      if (res.ok) {
-        const data = await res.json();
-        setMetrics(data.metrics);
+      const { ok, data } = await safeJson<any>(res);
+      if (ok && data) {
+        setMetrics(data.metrics || null);
         setCategoryCounts(data.categoryCounts || {});
         setDepartmentStats(data.departmentStats || []);
         setRecentMovements(data.recentMovements || []);

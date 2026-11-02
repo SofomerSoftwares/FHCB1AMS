@@ -1040,6 +1040,16 @@ class DatabaseStore {
     return this.data.users[idx];
   }
 
+  public deleteUser(id: string): boolean {
+    const initialLen = this.data.users.length;
+    this.data.users = this.data.users.filter((u) => u.id !== id);
+    if (this.data.users.length !== initialLen) {
+      this.saveToDisk();
+      return true;
+    }
+    return false;
+  }
+
   // --- Departments Accessors ---
   public getDepartments(): IDepartment[] {
     return [...this.data.departments];
@@ -1065,6 +1075,16 @@ class DatabaseStore {
     };
     this.saveToDisk();
     return this.data.departments[idx];
+  }
+
+  public deleteDepartment(id: string): boolean {
+    const initialLen = this.data.departments.length;
+    this.data.departments = this.data.departments.filter((d) => d.id !== id);
+    if (this.data.departments.length !== initialLen) {
+      this.saveToDisk();
+      return true;
+    }
+    return false;
   }
 
   // --- Locations Accessors ---

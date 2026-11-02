@@ -10,6 +10,7 @@ import { useAuth } from './AuthContext';
 import { useLanguage } from './LanguageContext';
 import { INotification } from '../types';
 import { Bell, CheckCircle2, AlertTriangle, AlertCircle, Info, X } from 'lucide-react';
+import { safeJson } from '../lib/apiUtils';
 
 import {
   triggerVibration,
@@ -218,8 +219,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           Accept: 'application/json',
         },
       });
-      if (res.ok) {
-        const data = await res.json();
+
+      const { ok, data } = await safeJson<{ notifications: INotification[]; unreadCount?: number }>(res);
+      if (ok && data) {
         const serverNotifs: INotification[] = Array.isArray(data.notifications) ? data.notifications : [];
         setNotifications(serverNotifs);
         const count = typeof data.unreadCount === 'number'
@@ -297,14 +299,12 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     if (!token || !user) return;
     try {
       const res = await fetch('/api/notifications/check-returns', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.alertedCount && data.alertedCount > 0) {
-          // Re-sync to pick up the newly generated return notifications
-          syncServerNotifications();
-        }
+      const { ok, data } = await safeJson<{ alertedCount?: number }>(res);
+      if (ok && data?.alertedCount && data.alertedCount > 0) {
+        // Re-sync to pick up the newly generated return notifications
+        syncServerNotifications();
       }
     } catch (err) {
       console.debug('Failed to check return deadlines:', err);

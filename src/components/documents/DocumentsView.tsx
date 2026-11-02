@@ -42,6 +42,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { StatusBadge } from '../ui/StatusBadge';
 import { formatBilingualDate } from '../../lib/ethiopianCalendar';
+import { safeJson } from '../../lib/apiUtils';
 import {
   IDocument,
   IArchiveLocation,
@@ -254,7 +255,7 @@ export const DocumentsView: React.FC = () => {
 
       const res = await fetch(`/api/documents?${params.toString()}`, {
         credentials: 'include',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       });
 
       if (res.status === 401) {
@@ -262,13 +263,13 @@ export const DocumentsView: React.FC = () => {
         return;
       }
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        setErrorState(errData.error || `Failed to fetch documents: HTTP ${res.status}`);
+      const { ok, data } = await safeJson<{ documents: any[]; total: number; error?: string }>(res);
+
+      if (!ok) {
+        setErrorState(data?.error || `Failed to fetch documents: HTTP ${res.status}`);
         return;
       }
 
-      const data = await res.json();
       setDocuments(data.documents || []);
       setTotalCount(data.total || 0);
     } catch (err: any) {

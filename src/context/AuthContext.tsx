@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { IUser, IDepartment, Role, PermissionKey, ISystemSettings, IRolePermissions } from '../types';
+import { safeJson } from '../lib/apiUtils';
 
 interface AuthContextType {
   user: IUser | null;
@@ -37,10 +38,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!activeToken) return;
     try {
       const res = await fetch('/api/settings', {
-        headers: { Authorization: `Bearer ${activeToken}` },
+        headers: { Authorization: `Bearer ${activeToken}`, Accept: 'application/json' },
       });
-      if (res.ok) {
-        const data = await res.json();
+      const { ok, data } = await safeJson<{ settings: ISystemSettings }>(res);
+      if (ok && data?.settings) {
         setSettings(data.settings);
       }
     } catch (err) {
@@ -62,16 +63,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         credentials: 'include',
         headers: {
           Authorization: `Bearer ${activeToken}`,
+          Accept: 'application/json',
         },
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      const { ok, data } = await safeJson<{ user: IUser; department?: IDepartment }>(res);
+
+      if (ok && data?.user) {
         setUser(data.user);
         setDepartment(data.department || null);
         await fetchSettings(activeToken);
       } else {
-        // Token expired or invalid
+        // Token expired, invalid or non-JSON response
         localStorage.removeItem('archivetrack_token');
         localStorage.removeItem('archivetrack_original_role');
         setToken(null);
@@ -102,15 +105,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ username, password }),
       });
 
-      let data: any = {};
-      try {
-        data = await res.json();
-      } catch {
-        // In case non-JSON response was returned
-      }
+      const { ok, data, status } = await safeJson<any>(res);
 
-      if (!res.ok) {
-        return { success: false, error: data.error || `Authentication failed (${res.status} ${res.statusText})` };
+      if (!ok || !data?.token) {
+        return { success: false, error: data?.error || `Authentication failed (${status})` };
       }
 
       localStorage.setItem('archivetrack_token', data.token);

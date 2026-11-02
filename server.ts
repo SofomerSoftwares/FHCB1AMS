@@ -19,6 +19,8 @@ async function startServer() {
   const portArgIndex = process.argv.indexOf('--port');
   const PORT = portArgIndex !== -1 && process.argv[portArgIndex + 1]
     ? parseInt(process.argv[portArgIndex + 1], 10)
+    : process.env.NODE_ENV === 'production' && process.env.PORT
+    ? parseInt(process.env.PORT, 10)
     : 3000;
   const isProduction = process.env.NODE_ENV === 'production';
 
@@ -43,6 +45,11 @@ async function startServer() {
 
   // API router
   app.use('/api', apiRouter);
+
+  // Catch-all for undefined /api/* routes to prevent HTML SPA fallback from returning <!doctype html> to API fetchers
+  app.all('/api/*', (_req, res) => {
+    res.status(404).json({ error: 'API route not found' });
+  });
 
   // Serve Vite in development or static files in production
   if (!isProduction) {

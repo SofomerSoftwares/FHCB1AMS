@@ -239,6 +239,48 @@ apiRouter.put('/users/:id', authMiddleware, requireRole('ADMIN'), async (req: Au
   }
 });
 
+apiRouter.delete('/users/:id', authMiddleware, requireRole('ADMIN'), (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Prevent deleting own account
+    if (req.user?.id === id) {
+      return res.status(400).json({ error: 'You cannot delete your own active administrator account.' });
+    }
+
+    const existingUser = db.getUserById(id);
+    if (!existingUser) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    // Check if user currently holds borrowed physical documents
+    const heldDocuments = db.getDocuments().filter((d) => d.currentHolderId === id);
+    if (heldDocuments.length > 0) {
+      return res.status(409).json({
+        error: `Cannot delete user: They currently hold ${heldDocuments.length} physical document(s) in custody. Return or reassign files first.`,
+      });
+    }
+
+    const deleted = db.deleteUser(id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'User could not be removed.' });
+    }
+
+    logAudit(
+      req.user!,
+      'USER_DELETED',
+      'USER',
+      id,
+      `Permanently removed user account @${existingUser.username} (${existingUser.fullName})`,
+      req
+    );
+
+    return res.json({ success: true, message: 'User account removed successfully.' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to delete user.' });
+  }
+});
+
 // ==========================================
 // 3. DEPARTMENTS
 // ==========================================
@@ -287,12 +329,23 @@ apiRouter.post('/departments', authMiddleware, requireRole('ADMIN'), (req: Authe
 
 apiRouter.put('/departments/:id', authMiddleware, requireRole('ADMIN'), (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  const { nameEn, nameAm, managerId, active, description } = req.body;
+  const { code, nameEn, nameAm, managerId, active, description } = req.body;
+
+  // Check code uniqueness if code is updated
+  if (code) {
+    const existingCode = db.getDepartments().find(
+      (d) => d.id !== id && d.code.toUpperCase() === code.trim().toUpperCase()
+    );
+    if (existingCode) {
+      return res.status(409).json({ error: 'Department code already exists in another department.' });
+    }
+  }
 
   const updated = db.updateDepartment(id, {
-    ...(nameEn !== undefined && { nameEn }),
-    ...(nameAm !== undefined && { nameAm }),
-    ...(managerId !== undefined && { managerId }),
+    ...(code !== undefined && { code: code.trim().toUpperCase() }),
+    ...(nameEn !== undefined && { nameEn: nameEn.trim() }),
+    ...(nameAm !== undefined && { nameAm: nameAm.trim() }),
+    ...(managerId !== undefined && { managerId: managerId || undefined }),
     ...(active !== undefined && { active }),
     ...(description !== undefined && { description }),
   });
@@ -301,8 +354,53 @@ apiRouter.put('/departments/:id', authMiddleware, requireRole('ADMIN'), (req: Au
     return res.status(404).json({ error: 'Department not found.' });
   }
 
-  logAudit(req.user!, 'DEPARTMENT_UPDATED', 'DEPARTMENT', id, `Updated department ${updated.code}`, req);
+  logAudit(req.user!, 'DEPARTMENT_UPDATED', 'DEPARTMENT', id, `Updated department ${updated.code} (${updated.nameEn})`, req);
   return res.json({ department: updated });
+});
+
+apiRouter.delete('/departments/:id', authMiddleware, requireRole('ADMIN'), (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const existingDept = db.getDepartmentById(id);
+    if (!existingDept) {
+      return res.status(404).json({ error: 'Department not found.' });
+    }
+
+    // Check if any documents belong to this department
+    const relatedDocs = db.getDocuments().filter((d) => d.departmentId === id);
+    if (relatedDocs.length > 0) {
+      return res.status(409).json({
+        error: `Cannot delete department "${existingDept.code}": ${relatedDocs.length} physical archive document(s) belong to it. Reassign files first.`,
+      });
+    }
+
+    // Check if any users belong to this department
+    const relatedUsers = db.getUsers().filter((u) => u.departmentId === id);
+    if (relatedUsers.length > 0) {
+      return res.status(409).json({
+        error: `Cannot delete department "${existingDept.code}": ${relatedUsers.length} user account(s) are assigned to it. Reassign staff first.`,
+      });
+    }
+
+    const deleted = db.deleteDepartment(id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Department could not be removed.' });
+    }
+
+    logAudit(
+      req.user!,
+      'DEPARTMENT_DELETED',
+      'DEPARTMENT',
+      id,
+      `Permanently removed department ${existingDept.code} (${existingDept.nameEn})`,
+      req
+    );
+
+    return res.json({ success: true, message: 'Department removed successfully.' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to delete department.' });
+  }
 });
 
 // ==========================================

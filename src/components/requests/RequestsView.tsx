@@ -23,6 +23,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { StatusBadge } from '../ui/StatusBadge';
 import { formatBilingualDate } from '../../lib/ethiopianCalendar';
+import { safeJson } from '../../lib/apiUtils';
 import { IArchiveLocation } from '../../types';
 
 export const RequestsView: React.FC = () => {
@@ -86,8 +87,8 @@ export const RequestsView: React.FC = () => {
     setLoading(true);
     try {
       const [reqRes, locRes] = await Promise.all([
-        fetch('/api/requests', { credentials: 'include', headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/locations', { credentials: 'include', headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/requests', { credentials: 'include', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }),
+        fetch('/api/locations', { credentials: 'include', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }),
       ]);
 
       if (reqRes.status === 401 || locRes.status === 401) {
@@ -95,13 +96,14 @@ export const RequestsView: React.FC = () => {
         return;
       }
 
-      if (reqRes.ok) {
-        const data = await reqRes.json();
-        setRequests(data.requests || []);
+      const { ok: reqOk, data: reqData } = await safeJson<{ requests: any[] }>(reqRes);
+      if (reqOk && reqData?.requests) {
+        setRequests(reqData.requests);
       }
-      if (locRes.ok) {
-        const locData = await locRes.json();
-        setLocations(locData.locations || []);
+
+      const { ok: locOk, data: locData } = await safeJson<{ locations: IArchiveLocation[] }>(locRes);
+      if (locOk && locData?.locations) {
+        setLocations(locData.locations);
       }
     } catch (err) {
       console.warn('Error loading requests:', err);

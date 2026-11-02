@@ -71,6 +71,8 @@
     "exportCsv": "Export Official CSV",
     "viewHistory": "Movement History",
     "save": "Save Changes",
+    "edit": "Edit",
+    "delete": "Delete",
     "cancel": "Cancel",
     "filter": "Filter",
     "reset": "Reset Filters"
