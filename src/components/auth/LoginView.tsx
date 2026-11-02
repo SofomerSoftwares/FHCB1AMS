@@ -4,7 +4,6 @@ import {
   Lock,
   User,
   ShieldCheck,
-  Building2,
   AlertCircle,
   Eye,
   EyeOff,
@@ -13,7 +12,8 @@ import {
   Server,
   FileCheck2,
   QrCode,
-  Sparkles,
+  Layers,
+  FileLock2,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
@@ -22,71 +22,48 @@ export const LoginView: React.FC = () => {
   const { locale, setLocale, t, isAmharic } = useLanguage();
   const { login } = useAuth();
 
-  const [username, setUsername] = useState<string>('admin');
-  const [password, setPassword] = useState<string>('Admin@ET2026!');
+  const [username, setUsername] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
-  const demoAccounts = [
-    {
-      role: 'Administrator',
-      roleAm: 'ዋና አስተዳዳሪ',
-      user: 'admin',
-      pass: 'Admin@ET2026!',
-      badge: 'bg-rose-100 text-rose-800 border-rose-200',
-    },
-    {
-      role: 'Archive Officer',
-      roleAm: 'ማህደር መዝጋቢ',
-      user: 'officer.almaz',
-      pass: 'User@ET2026!',
-      badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    },
-    {
-      role: 'Dept Manager',
-      roleAm: 'የስራ ክፍል ኃላፊ',
-      user: 'manager.berhanu',
-      pass: 'User@ET2026!',
-      badge: 'bg-blue-100 text-blue-800 border-blue-200',
-    },
-    {
-      role: 'Public Servant',
-      roleAm: 'ሰራተኛ',
-      user: 'employee.selam',
-      pass: 'User@ET2026!',
-      badge: 'bg-slate-100 text-slate-800 border-slate-200',
-    },
-  ];
-
-  const handleSelectQuickAccount = (user: string, pass: string) => {
-    setUsername(user);
-    setPassword(pass);
-    setError('');
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
 
-    const res = await login(username, password);
+    if (!username.trim() || !password) {
+      setError(
+        isAmharic
+          ? 'እባክዎ የተጠቃሚ ስም እና ይለፍ ቃል ያስገቡ።'
+          : 'Please enter your institutional username and password.'
+      );
+      return;
+    }
+
+    setLoading(true);
+    const res = await login(username.trim(), password);
     if (!res.success) {
-      setError(res.error || (isAmharic ? 'የተሳሳተ የተጠቃሚ ስም ወይም የይለፍ ቃል' : 'Invalid credentials. Please verify your username and password.'));
+      setError(
+        res.error ||
+          (isAmharic
+            ? 'የተሳሳተ የተጠቃሚ ስም ወይም የይለፍ ቃል'
+            : 'Invalid credentials. Please verify your username and password.')
+      );
     }
     setLoading(false);
   };
 
   return (
     <div className="min-h-screen flex flex-col justify-between bg-slate-950 text-slate-100 selection:bg-emerald-500 selection:text-white">
-      {/* Decorative Enterprise Background Gradients & Grid Pattern */}
+      {/* Subtle Production Grid Pattern */}
       <div className="fixed inset-0 pointer-events-none opacity-20">
         <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-emerald-600 blur-3xl"></div>
         <div className="absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-teal-700 blur-3xl"></div>
         <div className="h-full w-full bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:24px_24px] opacity-40"></div>
       </div>
 
-      {/* Top Header Bar */}
+      {/* Top Sovereign Header Bar */}
       <header className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-slate-800/80 backdrop-blur-md bg-slate-950/60">
         <div className="flex items-center space-x-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-teal-800 text-white shadow-lg shadow-emerald-900/30 border border-emerald-500/40">
@@ -102,12 +79,14 @@ export const LoginView: React.FC = () => {
               </span>
             </div>
             <p className="text-[11px] text-slate-400 font-amharic">
-              {isAmharic ? 'ቅርንጫፍ አንድ የማህደርና ሰነዶች አስተዳደር ስርዓት' : 'Branch One Physical Archive & Document Tracking System'}
+              {isAmharic
+                ? 'ቅርንጫፍ አንድ የማህደርና ሰነዶች አስተዳደር ስርዓት'
+                : 'Branch One Physical Archive & Document Tracking System'}
             </p>
           </div>
         </div>
 
-        {/* Language Pill Switcher */}
+        {/* Language Switcher */}
         <div className="flex items-center rounded-lg border border-slate-800 bg-slate-900/80 p-0.5 text-xs shadow-inner">
           <button
             onClick={() => setLocale('en')}
@@ -132,15 +111,17 @@ export const LoginView: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content: Split Hero & Login Form */}
+      {/* Main Content: Split Institutional Overview & Production Authentication */}
       <main className="relative z-10 flex-1 flex items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
-        <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
           
-          {/* Left Column: Institutional Credentials, Security & Info */}
+          {/* Left Column: Official Archive Security Standards */}
           <div className="lg:col-span-6 space-y-6 text-left hidden lg:block pr-4">
             <div className="inline-flex items-center space-x-2 rounded-full border border-emerald-500/30 bg-emerald-950/60 px-3 py-1 text-xs text-emerald-300 backdrop-blur-md">
               <ShieldCheck className="h-4 w-4 text-emerald-400" />
-              <span className="font-semibold tracking-wide">Government Records & Vault Registry</span>
+              <span className="font-semibold tracking-wide">
+                {isAmharic ? 'ይፋዊ የመንግስት ማህደር መዝገብ' : 'Government Records & Vault Registry'}
+              </span>
             </div>
 
             <div className="space-y-3">
@@ -152,66 +133,66 @@ export const LoginView: React.FC = () => {
               <p className="text-sm text-slate-300 leading-relaxed">
                 {isAmharic
                   ? 'የፌዴራል ቤቶች ኮርፖሬሽን የቅርንጫፍ አንድ ህጋዊ ሰነዶችን፣ የይዞታ ማረጋገጫዎችን፣ የተከራዮች ፋይሎችን እና ውሎችን በQR መለያ፣ በመደርደሪያና ሳጥን መገኛ የሚያስተዳድር የመንግስት ፖርታል'
-                  : 'Official record repository for deed registries, tenancy certificates, judicial decrees, and corporate commercial files catalogued with Shelf & Box physical coordinates.'}
+                  : 'Official sovereign repository for deed registries, tenancy certificates, judicial decrees, and corporate commercial files catalogued with Shelf & Box physical archival coordinates.'}
               </p>
             </div>
 
-            {/* Core Institutional Value Highlights */}
+            {/* Core Institutional Features */}
             <div className="grid grid-cols-2 gap-3 pt-2">
-              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3.5 backdrop-blur-xs">
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 backdrop-blur-xs space-y-1.5">
                 <div className="flex items-center space-x-2 text-emerald-400 text-xs font-bold">
                   <QrCode className="h-4 w-4" />
                   <span>{isAmharic ? 'የQR መለያና መከታተያ' : 'QR Barcode Tracking'}</span>
                 </div>
-                <p className="mt-1 text-[11px] text-slate-400 leading-normal">
-                  {isAmharic ? 'የመደርደሪያና ሳጥን ፈጣን ፍተሻ' : 'Precise Shelf & Box physical location mapping.'}
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {isAmharic
+                    ? 'የመደርደሪያና ሳጥን ፈጣን ፍተሻ እና ትክክለኛ መገኛ'
+                    : 'Precise Shelf & Box physical location mapping for rapid retrieval.'}
                 </p>
               </div>
 
-              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3.5 backdrop-blur-xs">
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 backdrop-blur-xs space-y-1.5">
                 <div className="flex items-center space-x-2 text-teal-400 text-xs font-bold">
                   <FileCheck2 className="h-4 w-4" />
                   <span>{isAmharic ? 'የውሰትና ርክክብ ፈቃድ' : 'Chain of Custody'}</span>
                 </div>
-                <p className="mt-1 text-[11px] text-slate-400 leading-normal">
-                  {isAmharic ? 'የስራ ክፍል ኃላፊ ማጽደቂያ' : 'Multi-level supervisor review & return alarms.'}
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {isAmharic
+                    ? 'የስራ ክፍል ኃላፊ ማጽደቂያ እና የመመለሻ ጊዜ ቁጥጥር'
+                    : 'Multi-level supervisor review, handovers, and return deadlines.'}
                 </p>
               </div>
-            </div>
 
-            {/* Quick Demo Credentials Scaffolding */}
-            <div className="rounded-xl border border-slate-800/90 bg-slate-900/70 p-4 space-y-2.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-200 flex items-center space-x-1.5">
-                  <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-                  <span>{isAmharic ? 'ፈጣን የመግቢያ መለያዎች (Demo Access)' : 'Quick Institutional Demo Profiles'}</span>
-                </span>
-                <span className="text-[10px] text-slate-400">Click to autofill</span>
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 backdrop-blur-xs space-y-1.5">
+                <div className="flex items-center space-x-2 text-amber-400 text-xs font-bold">
+                  <FileLock2 className="h-4 w-4" />
+                  <span>{isAmharic ? 'የምስጢራዊነት ደረጃዎች' : 'Security Clearance'}</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {isAmharic
+                    ? 'የመንግስት ሚስጥራዊ እና ከፍተኛ ሚስጥር ሰነዶች ጥበቃ'
+                    : 'Top Secret, Secret, and Confidential RBAC clearance policies.'}
+                </p>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                {demoAccounts.map((acc) => (
-                  <button
-                    key={acc.user}
-                    type="button"
-                    onClick={() => handleSelectQuickAccount(acc.user, acc.pass)}
-                    className="flex flex-col items-start rounded-lg border border-slate-800 bg-slate-950/60 p-2 text-left hover:border-emerald-500/50 hover:bg-slate-800/60 transition cursor-pointer group"
-                  >
-                    <span className="text-[11px] font-bold text-white group-hover:text-emerald-400 transition">
-                      {isAmharic ? acc.roleAm : acc.role}
-                    </span>
-                    <span className="text-[10px] font-mono text-slate-400 truncate w-full">
-                      @{acc.user}
-                    </span>
-                  </button>
-                ))}
+
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 backdrop-blur-xs space-y-1.5">
+                <div className="flex items-center space-x-2 text-sky-400 text-xs font-bold">
+                  <Layers className="h-4 w-4" />
+                  <span>{isAmharic ? 'የተሟላ የኦዲት መዝገብ' : 'Immutable Audit Log'}</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {isAmharic
+                    ? 'እያንዳንዱ የሰነድ እንቅስቃሴና ለውጥ በቋሚነት ይመዘገባል'
+                    : 'Full forensic history and movement tracking across jurisdictions.'}
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Right Column: High-Trust Login Card */}
+          {/* Right Column: High-Trust Production Login Form */}
           <div className="lg:col-span-6 w-full max-w-md mx-auto">
-            <div className="relative rounded-2xl border border-slate-800 bg-slate-900/90 p-8 shadow-2xl backdrop-blur-xl">
-              {/* Subtle accent border line on top */}
+            <div className="relative rounded-2xl border border-slate-800 bg-slate-900/95 p-8 shadow-2xl backdrop-blur-xl">
+              {/* Top Accent Gradient Bar */}
               <div className="absolute top-0 left-8 right-8 h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600 rounded-b"></div>
 
               <div className="text-center sm:text-left mb-6">
@@ -223,8 +204,8 @@ export const LoginView: React.FC = () => {
                 </h2>
                 <p className="mt-1 text-xs text-slate-400">
                   {isAmharic
-                    ? 'የተጠቃሚ መለያዎን እና ይለፍ ቃልዎን ያስገቡ'
-                    : 'Access authorized physical archive registry and documents.'}
+                    ? 'የተፈቀደልዎትን የተጠቃሚ መለያ እና ይለፍ ቃል ያስገቡ'
+                    : 'Enter your authorized institutional credentials to continue.'}
                 </p>
               </div>
 
@@ -238,16 +219,17 @@ export const LoginView: React.FC = () => {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    {isAmharic ? 'የተጠቃሚ ስም ወይም ኢሜይል' : 'Username or Government Email'}
+                    {isAmharic ? 'የተጠቃሚ ስም ወይም ይፋዊ ኢሜይል' : 'Username or Government Email'}
                   </label>
                   <div className="relative">
                     <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                     <input
                       type="text"
                       required
+                      autoComplete="username"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      placeholder="e.g. admin or officer.almaz"
+                      placeholder={isAmharic ? 'የተጠቃሚ ስም ያስገቡ' : 'Enter institutional username'}
                       className="w-full rounded-xl border border-slate-700 bg-slate-950/80 py-2.5 pl-9 pr-3 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition shadow-inner"
                     />
                   </div>
@@ -267,6 +249,7 @@ export const LoginView: React.FC = () => {
                     <input
                       type={showPassword ? 'text' : 'password'}
                       required
+                      autoComplete="current-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••••••"
@@ -302,33 +285,13 @@ export const LoginView: React.FC = () => {
                 </button>
               </form>
 
-              {/* Mobile Quick Selector */}
-              <div className="mt-5 pt-4 border-t border-slate-800 lg:hidden">
-                <p className="text-[10px] text-slate-400 mb-2 font-semibold">
-                  {isAmharic ? 'ፈጣን መለያ ምረጥ:' : 'Demo Quick Select:'}
-                </p>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {demoAccounts.map((acc) => (
-                    <button
-                      key={acc.user}
-                      type="button"
-                      onClick={() => handleSelectQuickAccount(acc.user, acc.pass)}
-                      className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1.5 text-[10px] text-left text-slate-300 hover:border-emerald-500/60"
-                    >
-                      <span className="font-bold block text-white">{acc.role}</span>
-                      <span className="font-mono text-slate-400">@{acc.user}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* Institutional Compliance Notice */}
-              <div className="mt-6 flex items-start space-x-2 rounded-lg bg-slate-950/60 p-2.5 border border-slate-800 text-[11px] text-slate-400">
-                <ShieldAlert className="h-4 w-4 shrink-0 text-amber-400/80 mt-0.5" />
+              <div className="mt-6 flex items-start space-x-2.5 rounded-lg bg-slate-950/70 p-3 border border-slate-800 text-[11px] text-slate-400">
+                <ShieldAlert className="h-4 w-4 shrink-0 text-amber-400/90 mt-0.5" />
                 <p className="leading-snug">
                   {isAmharic
                     ? 'ይህ ስርዓት የኢ.ፌ.ዲ.ሪ ህጋዊ ንብረት ነው። ያልተፈቀደ መግባት በወንጀል ያስቀጣል።'
-                    : 'Authorized government personnel only. All access, check-outs, and searches are recorded in immutable audit logs.'}
+                    : 'Official Federal Housing Corporation property. Unauthorized access, alteration, or extraction of records is strictly prohibited.'}
                 </p>
               </div>
             </div>
@@ -337,7 +300,7 @@ export const LoginView: React.FC = () => {
         </div>
       </main>
 
-      {/* Footer Bar */}
+      {/* Sovereign Footer Bar */}
       <footer className="relative z-10 border-t border-slate-800/80 px-6 py-3 text-center text-[11px] text-slate-500 backdrop-blur-md bg-slate-950/60 flex flex-col sm:flex-row items-center justify-between">
         <span>
           © {new Date().getFullYear()} Federal Housing Corporation (FHC) — Branch One Archive Division

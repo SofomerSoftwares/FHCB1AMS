@@ -36,6 +36,7 @@ import {
   XCircle,
   FileUp,
   Zap,
+  Trash2,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
@@ -130,6 +131,13 @@ export const DocumentsView: React.FC = () => {
   const [showReportMissingModal, setShowReportMissingModal] = useState<boolean>(false);
   const [showRequestModal, setShowRequestModal] = useState<boolean>(false);
   const [qrModalData, setQrModalData] = useState<any | null>(null);
+
+  // Multi-Selection State for Bulk Actions (Remove Selected Files)
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
+  const [docToDelete, setDocToDelete] = useState<any | null>(null);
+  const [isBatchDelete, setIsBatchDelete] = useState<boolean>(false);
 
   // Registration Form State (strictly COMMERCIAL or RESIDENT)
   const [registerForm, setRegisterForm] = useState({
@@ -502,13 +510,8 @@ export const DocumentsView: React.FC = () => {
       refToSubmit = 'AUTO';
     }
 
-    if (!registerForm.titleEn || !registerForm.titleAm) {
-      setFormError('English title and Amharic title are required.');
-      return;
-    }
-
     if (!registerForm.currentLocationId) {
-      setFormError('Please select a storage box or shelf location.');
+      setFormError(isAmharic ? 'እባክዎ የማህደር ሳጥን ወይም መደርደሪያ ይምረጡ።' : 'Please select a storage box or shelf location.');
       return;
     }
 
@@ -1028,6 +1031,107 @@ export const DocumentsView: React.FC = () => {
     }
   };
 
+  // Toggle selection for a single document
+  const handleToggleSelectDoc = (id: string) => {
+    setSelectedDocIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  // Select all or deselect all visible documents on current page
+  const handleToggleSelectAll = () => {
+    const visibleIds = documents.map((d) => d.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedDocIds.includes(id));
+    if (allSelected) {
+      setSelectedDocIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
+    } else {
+      setSelectedDocIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  // Prompt confirmation to delete a single document
+  const handleOpenDeleteSingle = (doc: any) => {
+    setDocToDelete(doc);
+    setIsBatchDelete(false);
+    setShowDeleteModal(true);
+  };
+
+  // Prompt confirmation to delete selected documents
+  const handleOpenDeleteBatch = () => {
+    if (selectedDocIds.length === 0) return;
+    setDocToDelete(null);
+    setIsBatchDelete(true);
+    setShowDeleteModal(true);
+  };
+
+  // Execute deletion (single or batch)
+  const handleExecuteDelete = async () => {
+    setIsDeleting(true);
+    try {
+      if (isBatchDelete) {
+        // Batch deletion
+        const res = await fetch('/api/documents/batch-delete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({ documentIds: selectedDocIds }),
+        });
+
+        const { ok, data } = await safeJson<{ deletedCount: number; failedCount: number; message: string; error?: string }>(res);
+        if (ok) {
+          notify({
+            titleEn: 'Physical Files Removed',
+            titleAm: 'የተመዘገቡ ሰነዶች ተሰርዘዋል',
+            messageEn: `Successfully removed ${data?.deletedCount || selectedDocIds.length} file(s) from archive.`,
+            messageAm: `${data?.deletedCount || selectedDocIds.length} የተመዘገቡ ሰነዶች ከማህደሩ ተሰርዘዋል።`,
+            type: 'ALERT',
+          });
+          setSelectedDocIds([]);
+          setShowDeleteModal(false);
+          fetchDocuments();
+        } else {
+          alert(data?.error || 'Failed to remove selected documents.');
+        }
+      } else if (docToDelete) {
+        // Single deletion
+        const res = await fetch(`/api/documents/${docToDelete.id}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        });
+
+        const { ok, data } = await safeJson<{ success: boolean; message?: string; error?: string }>(res);
+        if (ok) {
+          notify({
+            titleEn: 'File Removed',
+            titleAm: 'ሰነድ ተሰርዟል',
+            messageEn: `File [${docToDelete.referenceNumber}] permanently removed from archive registry.`,
+            messageAm: `ሰነድ [${docToDelete.referenceNumber}] ከማህደር መዝገብ በቋሚነት ተሰርዟል።`,
+            type: 'ALERT',
+          });
+          setSelectedDocIds((prev) => prev.filter((id) => id !== docToDelete.id));
+          setShowDeleteModal(false);
+          setDocToDelete(null);
+          if (showDetailModal && selectedDoc?.id === docToDelete.id) {
+            setShowDetailModal(false);
+          }
+          fetchDocuments();
+        } else {
+          alert(data?.error || 'Failed to remove document.');
+        }
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error occurred while deleting file.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Calculate active filter count
   const activeFilterCount = [
     category !== 'ALL',
@@ -1327,6 +1431,43 @@ export const DocumentsView: React.FC = () => {
         )}
       </div>
 
+      {/* Bulk Selection Action Toolbar */}
+      {selectedDocIds.length > 0 && hasRole('ADMIN', 'ARCHIVE_OFFICER') && (
+        <div className="flex items-center justify-between rounded-xl bg-slate-900 px-4 py-2.5 text-white shadow-lg animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center space-x-3">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-slate-950">
+              {selectedDocIds.length}
+            </span>
+            <span className="text-xs font-medium">
+              {isAmharic
+                ? `${selectedDocIds.length} ሰነድ(ዶች) ተመርጠዋል`
+                : `${selectedDocIds.length} physical file(s) selected`}
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setSelectedDocIds([])}
+              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition cursor-pointer"
+            >
+              {isAmharic ? 'ምርጫ ሰርዝ' : 'Deselect All'}
+            </button>
+
+            <button
+              onClick={handleOpenDeleteBatch}
+              className="inline-flex items-center space-x-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-rose-700 transition cursor-pointer shadow-sm"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>
+                {isAmharic
+                  ? `የተመረጡትን አስወግድ (${selectedDocIds.length})`
+                  : `Remove Selected Files (${selectedDocIds.length})`}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ========================================================= */}
       {/* DOCUMENTS TABLE */}
       {/* ========================================================= */}
@@ -1371,6 +1512,17 @@ export const DocumentsView: React.FC = () => {
             <table className="w-full text-left text-xs">
               <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <tr>
+                  {hasRole('ADMIN', 'ARCHIVE_OFFICER') && (
+                    <th className="px-3 py-3 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={documents.length > 0 && documents.every((d) => selectedDocIds.includes(d.id))}
+                        onChange={handleToggleSelectAll}
+                        className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                        title="Select/Deselect all visible files"
+                      />
+                    </th>
+                  )}
                   <th className="px-4 py-3">{t('document.refNumber')}</th>
                   <th className="px-4 py-3">{t('document.title')}</th>
                   <th className="px-4 py-3">{t('document.category')}</th>
@@ -1384,8 +1536,24 @@ export const DocumentsView: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {documents.map((doc, idx) => {
                   const isCommercial = doc.category === 'COMMERCIAL';
+                  const isSelected = selectedDocIds.includes(doc.id);
                   return (
-                    <tr key={`${doc.id}-${idx}`} className="hover:bg-slate-50/80 transition">
+                    <tr
+                      key={`${doc.id}-${idx}`}
+                      className={`hover:bg-slate-50/80 transition ${isSelected ? 'bg-emerald-50/40' : ''}`}
+                    >
+                      {/* Checkbox column */}
+                      {hasRole('ADMIN', 'ARCHIVE_OFFICER') && (
+                        <td className="px-3 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelectDoc(doc.id)}
+                            className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                          />
+                        </td>
+                      )}
+
                       {/* Ref & Dept */}
                       <td className="px-4 py-3 font-mono font-bold text-slate-900 whitespace-nowrap">
                         {doc.referenceNumber}
@@ -1524,6 +1692,28 @@ export const DocumentsView: React.FC = () => {
                           >
                             <QrCode className="h-3.5 w-3.5" />
                           </button>
+
+                          {/* Single Document Removal Button */}
+                          {hasRole('ADMIN', 'ARCHIVE_OFFICER') && (
+                            <button
+                              onClick={() => handleOpenDeleteSingle(doc)}
+                              disabled={doc.status === 'BORROWED'}
+                              className={`rounded-md border p-1.5 transition ${
+                                doc.status === 'BORROWED'
+                                  ? 'border-slate-200 text-slate-300 cursor-not-allowed bg-slate-50'
+                                  : 'border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 cursor-pointer'
+                              }`}
+                              title={
+                                doc.status === 'BORROWED'
+                                  ? 'Cannot delete file while borrowed'
+                                  : isAmharic
+                                  ? 'የተመዘገበ ሰነድ አስወግድ'
+                                  : 'Remove registered physical file'
+                              }
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -2192,34 +2382,6 @@ export const DocumentsView: React.FC = () => {
                     </option>
                   </select>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700">
-                  {t('document.title')} (English) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Official English Title"
-                  value={registerForm.titleEn}
-                  onChange={(e) => setRegisterForm({ ...registerForm, titleEn: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-emerald-600 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700">
-                  {t('document.titleAm')} (አማርኛ ርዕስ) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="ይፋዊ የአማርኛ ርዕስ"
-                  value={registerForm.titleAm}
-                  onChange={(e) => setRegisterForm({ ...registerForm, titleAm: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-amharic focus:border-emerald-600 focus:outline-none"
-                />
               </div>
 
               {/* Historical Address-Based Document Fields */}
@@ -3222,6 +3384,104 @@ export const DocumentsView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 8. DELETE DOCUMENT CONFIRMATION MODAL (SINGLE & BATCH)    */}
+      {/* ========================================================= */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95">
+            <button
+              onClick={() => {
+                setShowDeleteModal(false);
+                setDocToDelete(null);
+              }}
+              className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-start space-x-3.5">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-700 border border-rose-200">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900">
+                  {isAmharic
+                    ? isBatchDelete
+                      ? `${selectedDocIds.length} የተመረጡ ሰነዶችን ማስወገድ`
+                      : 'የተመዘገበውን ሰነድ ማስወገድ'
+                    : isBatchDelete
+                    ? `Remove ${selectedDocIds.length} Selected Files`
+                    : 'Remove Registered Physical File'}
+                </h3>
+                <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                  {isBatchDelete ? (
+                    isAmharic ? (
+                      `የተመረጡትን ${selectedDocIds.length} አካላዊ ሰነዶች ከማህደር መዝገብ በቋሚነት ማስወገድ ይፈልጋሉ?`
+                    ) : (
+                      `Are you sure you want to permanently remove ${selectedDocIds.length} selected physical documents from the archive registry?`
+                    )
+                  ) : (
+                    <>
+                      {isAmharic
+                        ? 'ሰነድ '
+                        : 'Are you sure you want to permanently remove document '}
+                      <strong className="text-slate-900">
+                        [{docToDelete?.referenceNumber}]
+                      </strong>
+                      ? {docToDelete?.titleEn && <span className="block text-slate-500 mt-0.5">{docToDelete.titleEn}</span>}
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl bg-amber-50 p-3 border border-amber-200 text-xs text-amber-800 space-y-1">
+              <p className="font-semibold flex items-center space-x-1">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                <span>{isAmharic ? 'የማህደር ህጋዊ ጥበቃ ማስታወሻ:' : 'Archival Integrity Notice:'}</span>
+              </p>
+              <p className="text-[11px] text-amber-700 leading-relaxed">
+                {isAmharic
+                  ? 'በውሰት ላይ ያሉ ሰነዶች እስኪመለሱ ድረስ ሊወገዱ አይችሉም። ይህ እርምጃ በቋሚ ኦዲት መዝገብ ይመዘገባል።'
+                  : 'Files currently in borrowed status cannot be deleted until returned. All removals are cryptographically logged in official audit history.'}
+              </p>
+            </div>
+
+            <div className="mt-5 flex justify-end space-x-2 border-t border-slate-100 pt-3.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDocToDelete(null);
+                }}
+                disabled={isDeleting}
+                className="rounded-lg border border-slate-300 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+              >
+                {t('actions.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteDelete}
+                disabled={isDeleting}
+                className="inline-flex items-center space-x-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition cursor-pointer disabled:opacity-50 shadow-xs"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>
+                  {isDeleting
+                    ? isAmharic
+                      ? 'በማስወገድ ላይ...'
+                      : 'Removing...'
+                    : isAmharic
+                    ? 'አስወግድ (Confirm Removal)'
+                    : 'Confirm Removal'}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       )}

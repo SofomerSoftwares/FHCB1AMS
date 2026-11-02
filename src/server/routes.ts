@@ -657,8 +657,9 @@ apiRouter.post('/documents', authMiddleware, requireRole('ADMIN', 'ARCHIVE_OFFIC
       });
     }
 
-    if (!titleEn || !titleAm || !departmentId || !currentLocationId || !documentDate) {
-      return res.status(400).json({ error: 'Required document fields are missing (titleEn, titleAm, department, location, documentDate).' });
+    // Validate required fields (department, location, documentDate)
+    if (!departmentId || !currentLocationId || !documentDate) {
+      return res.status(400).json({ error: 'Required document fields are missing (department, location, documentDate).' });
     }
 
     // Auto-generate reference number if missing, empty, or set to AUTO
@@ -670,6 +671,10 @@ apiRouter.post('/documents', authMiddleware, requireRole('ADMIN', 'ARCHIVE_OFFIC
       });
       finalRef = generated.referenceNumber;
     }
+
+    // Smart default for titles if omitted in physical file registration
+    const defaultEn = titleEn?.trim() || `${upperCategory === 'COMMERCIAL' ? 'Commercial' : 'Resident'} Physical File [${finalRef}]`;
+    const defaultAm = titleAm?.trim() || `${upperCategory === 'COMMERCIAL' ? 'የንግድ' : 'የነዋሪ'} ማህደር ሰነድ [${finalRef}]`;
 
     // Check duplicate reference number
     if (db.getDocumentByRef(finalRef)) {
@@ -704,8 +709,8 @@ apiRouter.post('/documents', authMiddleware, requireRole('ADMIN', 'ARCHIVE_OFFIC
     const newDoc: IDocument = {
       id: `doc-${Date.now()}`,
       referenceNumber: finalRef,
-      titleEn: titleEn.trim(),
-      titleAm: titleAm.trim(),
+      titleEn: defaultEn,
+      titleAm: defaultAm,
       description: description?.trim() || '',
       category: upperCategory as DocumentCategory,
       departmentId,
@@ -1303,6 +1308,76 @@ apiRouter.put('/documents/:id', authMiddleware, requireRole('ADMIN', 'ARCHIVE_OF
 
   logAudit(req.user!, 'DOCUMENT_UPDATED', 'DOCUMENT', id, `Updated metadata for document ${doc.referenceNumber}`, req);
   return res.json({ document: updated });
+});
+
+// Single Document Deletion (Authorized Officers and Administrators)
+apiRouter.delete('/documents/:id', authMiddleware, requireRole('ADMIN', 'ARCHIVE_OFFICER'), (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const doc = db.getDocumentById(id);
+    if (!doc) {
+      return res.status(404).json({ error: 'Document not found in archival registry.' });
+    }
+
+    if (doc.status === 'BORROWED') {
+      return res.status(409).json({
+        error: `Cannot remove file "${doc.referenceNumber}": File is currently borrowed and in physical custody. Process return before removing.`,
+      });
+    }
+
+    const deleted = db.deleteDocument(id);
+    if (!deleted) {
+      return res.status(500).json({ error: 'Failed to remove document from storage.' });
+    }
+
+    logAudit(
+      req.user!,
+      'DOCUMENT_DELETED',
+      'DOCUMENT',
+      id,
+      `Permanently removed registered file [${doc.referenceNumber}] (${doc.titleEn}) from archive.`,
+      req
+    );
+
+    return res.json({
+      success: true,
+      message: `Document [${doc.referenceNumber}] removed successfully.`,
+      deletedId: id,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to delete document.' });
+  }
+});
+
+// Batch Document Deletion for Multi-Selection
+apiRouter.post('/documents/batch-delete', authMiddleware, requireRole('ADMIN', 'ARCHIVE_OFFICER'), (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { documentIds } = req.body;
+    if (!Array.isArray(documentIds) || documentIds.length === 0) {
+      return res.status(400).json({ error: 'Please provide an array of document IDs to remove.' });
+    }
+
+    const { deletedCount, failedIds } = db.deleteDocuments(documentIds);
+
+    logAudit(
+      req.user!,
+      'DOCUMENT_BATCH_DELETED',
+      'DOCUMENT',
+      'BATCH',
+      `Permanently removed ${deletedCount} registered documents from archive storage. Failed: ${failedIds.length}`,
+      req
+    );
+
+    return res.json({
+      success: true,
+      deletedCount,
+      failedCount: failedIds.length,
+      failedIds,
+      message: `Removed ${deletedCount} registered document(s). ${failedIds.length > 0 ? `${failedIds.length} file(s) could not be removed because they are currently borrowed.` : ''}`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to batch delete documents.' });
+  }
 });
 
 // Controlled Relocation of physical document (recording previous & new shelf & box numbers)

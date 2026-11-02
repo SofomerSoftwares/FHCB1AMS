@@ -1188,6 +1188,46 @@ class DatabaseStore {
     return this.data.documents[idx];
   }
 
+  public deleteDocument(id: string): boolean {
+    const initialLen = this.data.documents.length;
+    this.data.documents = this.data.documents.filter((d) => d.id !== id);
+    if (this.data.documents.length !== initialLen) {
+      // Also clean up or flag related open requests & movements if needed
+      this.data.requests = this.data.requests.filter((r) => r.documentId !== id);
+      this.data.movements = this.data.movements.filter((m) => m.documentId !== id);
+      this.saveToDisk();
+      return true;
+    }
+    return false;
+  }
+
+  public deleteDocuments(ids: string[]): { deletedCount: number; failedIds: string[] } {
+    const idSet = new Set(ids);
+    const initialLen = this.data.documents.length;
+    const toDelete = this.data.documents.filter((d) => idSet.has(d.id));
+    
+    // Check if any are currently borrowed
+    const borrowed = toDelete.filter((d) => d.status === 'BORROWED');
+    const borrowedIds = new Set(borrowed.map((d) => d.id));
+    
+    const deletableIds = new Set(
+      toDelete.filter((d) => !borrowedIds.has(d.id)).map((d) => d.id)
+    );
+
+    this.data.documents = this.data.documents.filter((d) => !deletableIds.has(d.id));
+    this.data.requests = this.data.requests.filter((r) => !deletableIds.has(r.documentId));
+    this.data.movements = this.data.movements.filter((m) => !deletableIds.has(m.documentId));
+
+    if (this.data.documents.length !== initialLen) {
+      this.saveToDisk();
+    }
+
+    return {
+      deletedCount: deletableIds.size,
+      failedIds: Array.from(borrowedIds),
+    };
+  }
+
   /**
    * Generates a unique, sequential FHC Branch One official archival reference number.
    * Pattern: FHC-B1/{YEAR}/{PREFIX}-{SEQUENCE}
