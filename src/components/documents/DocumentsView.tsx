@@ -494,8 +494,21 @@ export const DocumentsView: React.FC = () => {
     setFormError('');
     setFormSuccess('');
     setShowRegisterModal(true);
+
+    // Auto-select first available storage unit and department if not already selected
+    const defaultBox = locations.find((l) => l.type === 'BOX' && l.active) || locations.find((l) => l.active);
+    const defaultDept = departments.find((d) => d.active) || departments[0];
+
+    setRegisterForm((prev) => ({
+      ...prev,
+      currentLocationId: prev.currentLocationId || defaultBox?.id || '',
+      shelfNumber: prev.shelfNumber || defaultBox?.shelfNumber || '',
+      boxNumber: prev.boxNumber || defaultBox?.boxNumber || '',
+      departmentId: prev.departmentId || defaultDept?.id || '',
+    }));
+
     if (!registerForm.referenceNumber || autoGenerateRef) {
-      handleAutoGenerateRef(registerForm.category, refPrefixType);
+      handleAutoGenerateRef(registerForm.category, refPrefixType, registerForm.departmentId || defaultDept?.id);
     }
   };
 
@@ -690,9 +703,6 @@ export const DocumentsView: React.FC = () => {
       if (!cat) {
         valid = false;
         error = `Invalid category '${rawCat}'. Must be COMMERCIAL or RESIDENT.`;
-      } else if (!titleEn) {
-        valid = false;
-        error = 'English Title (titleEn) is required.';
       } else if (!isAutoRef) {
         if (seenRefs.has(rawRef.toUpperCase())) {
           valid = false;
@@ -702,6 +712,9 @@ export const DocumentsView: React.FC = () => {
         }
       }
 
+      const displayTitleEn = titleEn || `${cat === 'COMMERCIAL' ? 'Commercial' : 'Resident'} Physical File [${isAutoRef ? 'AUTO' : rawRef}]`;
+      const displayTitleAm = titleAm || `${cat === 'COMMERCIAL' ? 'የንግድ' : 'የነዋሪ'} ማህደር ሰነድ [${isAutoRef ? 'AUTO' : rawRef}]`;
+
       return {
         index: index + 1,
         valid,
@@ -710,8 +723,8 @@ export const DocumentsView: React.FC = () => {
         preview: {
           referenceNumber: isAutoRef ? 'AUTO (Sequential)' : rawRef,
           category: cat || rawCat || 'UNKNOWN',
-          titleEn,
-          titleAm,
+          titleEn: displayTitleEn,
+          titleAm: displayTitleAm,
           departmentCode: deptCode || 'DEFAULT',
           locationCode: locCode || 'DEFAULT',
           shelfNumber,
@@ -2381,6 +2394,40 @@ export const DocumentsView: React.FC = () => {
                       {isAmharic ? 'ነዋሪ (Resident)' : 'Resident'}
                     </option>
                   </select>
+                </div>
+              </div>
+
+              {/* Title Inputs (Bilingual) */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Document Title (English)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Commercial Registry Certificate or Title Deed"
+                    value={registerForm.titleEn}
+                    onChange={(e) =>
+                      setRegisterForm({ ...registerForm, titleEn: e.target.value })
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-emerald-600 focus:outline-none"
+                  />
+                  <span className="text-[10px] text-slate-400">Optional: Auto-generated from file ID if blank</span>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 font-amharic">
+                    የሰነድ ርዕስ (አማርኛ)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="ምሳሌ፡ የንግድ ምዝገባ ምስክር ወረቀት ወይም የይዞታ ማረጋገጫ"
+                    value={registerForm.titleAm}
+                    onChange={(e) =>
+                      setRegisterForm({ ...registerForm, titleAm: e.target.value })
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-amharic text-slate-900 focus:border-emerald-600 focus:outline-none"
+                  />
+                  <span className="text-[10px] text-slate-400">አማራጭ፡ ባዶ ከሆነ በራስ-ሰር ይዘጋጃል</span>
                 </div>
               </div>
 

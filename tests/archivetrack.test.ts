@@ -1,11 +1,38 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import fs from 'fs';
+import path from 'path';
+import { describe, it, expect, beforeEach, afterAll, beforeAll } from 'vitest';
 import bcrypt from 'bcryptjs';
+
+const TEST_DATA_DIR = path.resolve(process.cwd(), 'data');
+const TEST_DATA_FILE = path.join(TEST_DATA_DIR, 'archivetrack_test_store.json');
+process.env.ARCHIVETRACK_DATA_FILE = TEST_DATA_FILE;
+
 import { db } from '../src/server/db/store';
 import { gregorianToEthiopian, formatBilingualDate } from '../src/lib/ethiopianCalendar';
 import { generateToken, verifyToken } from '../src/server/auth';
 import { IUser, IDocument, IDocumentRequest } from '../src/types';
 
 describe('FHC Branch One Archive System Core System Tests', () => {
+  beforeAll(async () => {
+    // Copy main store to test store if exists, or let db initialize clean seed
+    const prodFile = path.join(TEST_DATA_DIR, 'archivetrack_store.json');
+    if (fs.existsSync(prodFile)) {
+      fs.copyFileSync(prodFile, TEST_DATA_FILE);
+    }
+    await db.initialize();
+  });
+
+  afterAll(() => {
+    // Clean up temporary test file
+    if (fs.existsSync(TEST_DATA_FILE)) {
+      try {
+        fs.unlinkSync(TEST_DATA_FILE);
+      } catch (e) {
+        // ignore
+      }
+    }
+  });
+
   beforeEach(async () => {
     await db.initialize();
   });

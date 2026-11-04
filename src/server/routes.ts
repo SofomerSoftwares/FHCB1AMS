@@ -36,8 +36,99 @@ apiRouter.get('/health', (_req, res) => {
       connectedToMongo: dbStatus.isMongo,
       storageEngine: dbStatus.engine,
       targetConnection: dbStatus.connectionString,
+      details: dbStatus.details,
     },
   });
+});
+
+// Admin Database Station Health & Test Connection Route
+apiRouter.post('/system/test-mysql', authMiddleware, requireRole('ADMIN'), async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const result = await db.testMySQLConnection();
+    const currentStatus = db.getDatabaseStatus();
+    return res.json({
+      ...result,
+      database: {
+        connectedToMySQL: currentStatus.isMySQL,
+        connectedToMongo: currentStatus.isMongo,
+        storageEngine: currentStatus.engine,
+        targetConnection: currentStatus.connectionString,
+        details: currentStatus.details,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to ping MySQL instance.' });
+  }
+});
+
+// Admin Sync Database with Remote Source Route
+apiRouter.post('/system/sync-database', authMiddleware, requireRole('ADMIN'), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const syncResult = await db.syncWithDatabaseSource();
+    const currentStatus = db.getDatabaseStatus();
+
+    logAudit(
+      req.user!,
+      'DATABASE_SYNC',
+      'SYSTEM',
+      'DATABASE',
+      `Triggered synchronization with database source [${syncResult.source}]. Result: ${syncResult.success ? 'Success' : syncResult.error}`,
+      req
+    );
+
+    return res.json({
+      ...syncResult,
+      database: {
+        connectedToMySQL: currentStatus.isMySQL,
+        connectedToMongo: currentStatus.isMongo,
+        storageEngine: currentStatus.engine,
+        targetConnection: currentStatus.connectionString,
+        details: currentStatus.details,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to sync with database source.' });
+  }
+});
+
+// Admin Configure Database Connection Route
+apiRouter.post('/system/configure-database', authMiddleware, requireRole('ADMIN'), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { engine, mysqlHost, mysqlPort, mysqlUser, mysqlPassword, mysqlDatabase, mongoUri } = req.body;
+    const configResult = await db.configureDatabaseConnection({
+      engine,
+      mysqlHost,
+      mysqlPort: mysqlPort ? parseInt(mysqlPort, 10) : undefined,
+      mysqlUser,
+      mysqlPassword,
+      mysqlDatabase,
+      mongoUri,
+    });
+
+    const currentStatus = db.getDatabaseStatus();
+
+    logAudit(
+      req.user!,
+      'DATABASE_CONFIGURED',
+      'SYSTEM',
+      'DATABASE',
+      `Configured database source endpoint [Engine: ${configResult.engine}]. Result: ${configResult.success ? 'Connected' : configResult.error}`,
+      req
+    );
+
+    return res.json({
+      ...configResult,
+      database: {
+        connectedToMySQL: currentStatus.isMySQL,
+        connectedToMongo: currentStatus.isMongo,
+        storageEngine: currentStatus.engine,
+        targetConnection: currentStatus.connectionString,
+        details: currentStatus.details,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to update database configuration.' });
+  }
 });
 
 apiRouter.post('/auth/login', async (req, res) => {
@@ -1058,43 +1149,28 @@ apiRouter.post('/documents/import-csv', authMiddleware, requireRole('ADMIN', 'AR
         continue;
       }
 
-      if (!titleEn) {
-        validatedItems.push({
-          index: rowIndex,
-          valid: false,
-          error: 'Document English Title (titleEn) is required.',
-          preview: {
-            referenceNumber: rawRef || 'AUTO',
-            category: normalizedCat,
-            titleEn: '',
-            titleAm,
-            departmentCode: deptVal,
-            locationCode: locVal,
-            shelfNumber: shelfNum,
-            boxNumber: boxNum,
-            oldWoreda,
-            oldKebele,
-            houseNumber,
-            isAutoRef,
-          },
-        });
-        continue;
-      }
-
-      // Department resolution
+      // Safe department resolution with fallback
       let resolvedDept = departments.find(
-        (d) => d.code.toUpperCase() === deptVal.toUpperCase() || d.id === deptVal
-      );
+        (d) => (deptVal && (d.code.toUpperCase() === deptVal.toUpperCase() || d.id === deptVal))
+      ) || defaultDept;
+
       if (!resolvedDept) {
-        resolvedDept = defaultDept;
+        resolvedDept = {
+          id: 'dept-doc-arch-01',
+          code: 'DOC-ARCH',
+          nameEn: 'Institutional Document Archive',
+          nameAm: 'የሰነድ ማህደር ክፍል',
+          active: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
       }
 
-      // Location resolution
+      // Safe location resolution with fallback
       let resolvedLoc = locations.find(
-        (l) => l.code.toUpperCase() === locVal.toUpperCase() || l.id === locVal
+        (l) => (locVal && (l.code.toUpperCase() === locVal.toUpperCase() || l.id === locVal))
       );
       if (!resolvedLoc) {
-        // If boxNumber or shelfNumber provided, try matching by boxNumber or shelfNumber
         if (boxNum) {
           resolvedLoc = locations.find((l) => l.boxNumber === boxNum);
         } else if (shelfNum) {
@@ -1103,6 +1179,22 @@ apiRouter.post('/documents/import-csv', authMiddleware, requireRole('ADMIN', 'AR
         if (!resolvedLoc) {
           resolvedLoc = defaultLoc;
         }
+      }
+
+      if (!resolvedLoc) {
+        resolvedLoc = {
+          id: 'loc-box-default-01',
+          code: 'BOX-01',
+          nameEn: 'General Archival Storage Box',
+          nameAm: 'አጠቃላይ የማህደር ሳጥን',
+          type: 'BOX',
+          active: true,
+          shelfNumber: shelfNum || '01',
+          boxNumber: boxNum || '001',
+          fullPath: 'General Vault / Box-01',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
       }
 
       // Preserve strings with leading zeroes (e.g. "05", "012")
@@ -1114,7 +1206,7 @@ apiRouter.post('/documents/import-csv', authMiddleware, requireRole('ADMIN', 'AR
       if (isAutoRef) {
         const gen = db.generateReferenceNumber({
           category: normalizedCat,
-          departmentId: resolvedDept.id,
+          departmentId: resolvedDept?.id,
         });
         let seq = gen.sequence;
         finalRef = gen.referenceNumber;
@@ -1132,10 +1224,10 @@ apiRouter.post('/documents/import-csv', authMiddleware, requireRole('ADMIN', 'AR
             preview: {
               referenceNumber: finalRef,
               category: normalizedCat,
-              titleEn,
-              titleAm,
-              departmentCode: resolvedDept.code,
-              locationCode: resolvedLoc.code,
+              titleEn: titleEn || '',
+              titleAm: titleAm || '',
+              departmentCode: resolvedDept?.code || 'DOC-ARCH',
+              locationCode: resolvedLoc?.code || 'BOX-01',
               shelfNumber: resolvedShelf || '',
               boxNumber: resolvedBox || '',
               oldWoreda,
@@ -1148,6 +1240,10 @@ apiRouter.post('/documents/import-csv', authMiddleware, requireRole('ADMIN', 'AR
         }
       }
 
+      // Safe title defaults if titleEn or titleAm is omitted in physical file CSV
+      const effectiveTitleEn = titleEn?.trim() || `${normalizedCat === 'COMMERCIAL' ? 'Commercial' : 'Resident'} Physical File [${finalRef}]`;
+      const effectiveTitleAm = titleAm?.trim() || `${normalizedCat === 'COMMERCIAL' ? 'የንግድ' : 'የነዋሪ'} ማህደር ሰነድ [${finalRef}]`;
+
       existingRefsInBatch.add(finalRef);
 
       const qrIdentifier = `QR-${finalRef.replace(/[^A-Za-z0-9]/g, '-')}-${Date.now().toString(36).toUpperCase()}-${i}`;
@@ -1155,9 +1251,9 @@ apiRouter.post('/documents/import-csv', authMiddleware, requireRole('ADMIN', 'AR
       const newDoc: IDocument = {
         id: `doc-csv-${Date.now()}-${i}`,
         referenceNumber: finalRef,
-        titleEn,
-        titleAm,
-        description,
+        titleEn: effectiveTitleEn,
+        titleAm: effectiveTitleAm,
+        description: description || '',
         category: normalizedCat,
         departmentId: resolvedDept.id,
         documentDate: docDate,
@@ -1187,8 +1283,8 @@ apiRouter.post('/documents/import-csv', authMiddleware, requireRole('ADMIN', 'AR
         preview: {
           referenceNumber: finalRef,
           category: normalizedCat,
-          titleEn,
-          titleAm,
+          titleEn: effectiveTitleEn,
+          titleAm: effectiveTitleAm,
           departmentCode: resolvedDept.code,
           locationCode: resolvedLoc.code,
           shelfNumber: resolvedShelf || '',
