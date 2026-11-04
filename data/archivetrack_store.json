@@ -1144,6 +1144,13 @@
     },
     {
       "id": "aud-1793196285267-bxink",
+      "actorId": "usr-system",
+      "actorName": "System Service",
+      "actorRole": "SYSTEM",
+      "action": "SYSTEM_EVENT",
+      "targetType": "SYSTEM",
+      "targetId": "N/A",
+      "details": "System process event logged.",
       "ipAddress": "internal",
       "timestamp": "2026-10-28T14:04:45.267Z"
     },
@@ -1173,6 +1180,13 @@
     },
     {
       "id": "aud-1793197352574-23xvo",
+      "actorId": "usr-system",
+      "actorName": "System Service",
+      "actorRole": "SYSTEM",
+      "action": "SYSTEM_EVENT",
+      "targetType": "SYSTEM",
+      "targetId": "N/A",
+      "details": "System process event logged.",
       "ipAddress": "internal",
       "timestamp": "2026-10-28T14:22:32.574Z"
     },
@@ -1190,6 +1204,13 @@
     },
     {
       "id": "aud-1793197392436-gz00l",
+      "actorId": "usr-system",
+      "actorName": "System Service",
+      "actorRole": "SYSTEM",
+      "action": "SYSTEM_EVENT",
+      "targetType": "SYSTEM",
+      "targetId": "N/A",
+      "details": "System process event logged.",
       "ipAddress": "internal",
       "timestamp": "2026-10-28T14:23:12.436Z"
     },
@@ -1434,6 +1455,18 @@
       "read": false,
       "link": "/requests?id=req-return-test-1793609436292",
       "createdAt": "2026-11-02T09:11:01.925Z"
+    },
+    {
+      "id": "notif-check-ret-1793792016250-0",
+      "userId": "usr-admin-01",
+      "titleEn": "Overdue Document Return Required",
+      "titleAm": "የመመለሻ ጊዜው ያለፈበት ሰነድ ማስጠንቀቂያ",
+      "messageEn": "File \"Commercial Technology Supplier Engineering Contract & Deeds\" (ET-FDRE/2025/MINT-0418) was due on 10/22/2026. Please return it immediately.",
+      "messageAm": "ሰነድ \"የንግድ ቴክኖሎጂ አቅራቢዎች የምህንድስና ውል እና ማረጋገጫ ሰነድ\" (ET-FDRE/2025/MINT-0418) የመመለሻ ቀኑ 10/22/2026 አልፏል። እባክዎ በአስቸኳይ ይመልሱ።",
+      "type": "ALERT",
+      "read": false,
+      "link": "/requests?id=req-2026-001",
+      "createdAt": "2026-11-04T11:33:36.256Z"
     }
   ],
   "settings": {

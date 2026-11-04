@@ -42,13 +42,25 @@ export const AuditLogView: React.FC = () => {
     fetchLogs();
   }, [token]);
 
-  const filteredLogs = logs.filter(
-    (l) =>
-      l.action.toLowerCase().includes(search.toLowerCase()) ||
-      l.actorName.toLowerCase().includes(search.toLowerCase()) ||
-      l.details.toLowerCase().includes(search.toLowerCase()) ||
-      l.targetId.toLowerCase().includes(search.toLowerCase())
-  );
+  const query = search.trim().toLowerCase();
+  const filteredLogs = logs.filter((l) => {
+    if (!query) return true;
+    const action = String(l?.action || '').toLowerCase();
+    const actorName = String(l?.actorName || '').toLowerCase();
+    const actorRole = String(l?.actorRole || '').toLowerCase();
+    const details = String(l?.details || '').toLowerCase();
+    const targetId = String(l?.targetId || '').toLowerCase();
+    const targetType = String(l?.targetType || '').toLowerCase();
+
+    return (
+      action.includes(query) ||
+      actorName.includes(query) ||
+      actorRole.includes(query) ||
+      details.includes(query) ||
+      targetId.includes(query) ||
+      targetType.includes(query)
+    );
+  });
 
   return (
     <div className="space-y-6">
@@ -95,25 +107,25 @@ export const AuditLogView: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredLogs.map((log, idx) => (
-                  <tr key={`${log.id}-${idx}`} className="hover:bg-slate-50 transition">
+                  <tr key={log.id || `log-${idx}`} className="hover:bg-slate-50 transition">
                     <td className="px-4 py-3 whitespace-nowrap font-mono text-slate-500 text-[11px]">
-                      {formatBilingualDate(log.timestamp, locale)}
+                      {log.timestamp ? formatBilingualDate(log.timestamp, locale) : 'N/A'}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <p className="font-semibold text-slate-900">{log.actorName}</p>
+                      <p className="font-semibold text-slate-900">{log.actorName || 'System'}</p>
                       <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
-                        {log.actorRole}
+                        {log.actorRole || 'SYSTEM'}
                       </span>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className="font-mono text-[11px] font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded-sm border border-blue-200">
-                        {log.action}
+                        {log.action || 'EVENT'}
                       </span>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap font-mono text-slate-700 text-[11px]">
-                      {log.targetType}:{log.targetId}
+                      {log.targetType || 'SYSTEM'}:{log.targetId || 'N/A'}
                     </td>
-                    <td className="px-4 py-3 text-slate-700 max-w-sm">{log.details}</td>
+                    <td className="px-4 py-3 text-slate-700 max-w-sm">{log.details || 'No description provided.'}</td>
                     <td className="px-4 py-3 whitespace-nowrap font-mono text-[11px] text-slate-400">
                       {log.ipAddress || 'internal'}
                     </td>

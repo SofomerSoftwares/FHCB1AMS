@@ -35,6 +35,8 @@ export interface ToastItem {
 interface NotificationContextType {
   permission: NotificationPermission;
   isSupported: boolean;
+  soundEnabled: boolean;
+  toggleSound: (enabled?: boolean) => void;
   requestPermission: () => Promise<NotificationPermission>;
   notify: (opts: {
     titleEn: string;
@@ -75,6 +77,19 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const seenNotificationIds = useRef<Set<string>>(new Set());
   const isFirstLoad = useRef<boolean>(true);
+
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    const stored = localStorage.getItem('archivetrack_sound_enabled');
+    return stored !== null ? stored === 'true' : true;
+  });
+
+  const toggleSound = useCallback((enabled?: boolean) => {
+    setSoundEnabled((prev) => {
+      const next = typeof enabled === 'boolean' ? enabled : !prev;
+      localStorage.setItem('archivetrack_sound_enabled', String(next));
+      return next;
+    });
+  }, []);
 
   // Keep permission state updated
   useEffect(() => {
@@ -161,7 +176,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       // 1. Play audio chime and trigger native browser notification with vibration
       triggerBrowserNotification(title, {
         body: message,
-        sound: opts.sound !== false,
+        sound: soundEnabled && opts.sound !== false,
         vibrate: shouldVibrate ? patternToUse : false,
         type: type === 'SUCCESS' ? 'success' : type === 'ALERT' || type === 'WARNING' ? 'warning' : 'info',
         onClick: () => {
@@ -189,7 +204,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         removeToast(toastId);
       }, 6000);
     },
-    [isAmharic, removeToast, vibrationSettings]
+    [isAmharic, removeToast, vibrationSettings, soundEnabled]
   );
 
   const testNotification = useCallback(() => {
@@ -400,6 +415,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       value={{
         permission,
         isSupported,
+        soundEnabled,
+        toggleSound,
         requestPermission,
         notify,
         removeToast,

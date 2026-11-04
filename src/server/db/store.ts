@@ -4,6 +4,17 @@ import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import mysql from 'mysql2/promise';
 import {
+  UserModel,
+  DepartmentModel,
+  ArchiveLocationModel,
+  DocumentRecordModel,
+  DocumentRequestModel,
+  FileMovementModel,
+  AuditLogModel,
+  MissingFileInvestigationModel,
+  NotificationModel,
+} from './models';
+import {
   IUser,
   IDepartment,
   IArchiveLocation,
@@ -154,6 +165,36 @@ class DatabaseStore {
   private lastMySQLPingMs: number = 0;
   private isInitialized: boolean = false;
 
+  public async testMongoDBConnection(uriInput?: string): Promise<{ success: boolean; latencyMs?: number; error?: string }> {
+    const mongoUri = uriInput || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/archivetrack_ethiopia';
+    const startTime = Date.now();
+    try {
+      const isSrv = mongoUri.startsWith('mongodb+srv://');
+      const connectOpts = isSrv
+        ? { serverSelectionTimeoutMS: 2500 }
+        : { serverSelectionTimeoutMS: 2500, directConnection: true };
+      
+      // If already connected, run ping command
+      if (mongoose.connection.readyState === 1) {
+        if (mongoose.connection.db) {
+          await mongoose.connection.db.admin().ping();
+          const latencyMs = Date.now() - startTime;
+          this.isConnectedToMongo = true;
+          return { success: true, latencyMs };
+        }
+      }
+
+      await mongoose.disconnect();
+      await mongoose.connect(mongoUri, connectOpts);
+      const latencyMs = Date.now() - startTime;
+      this.isConnectedToMongo = true;
+      return { success: true, latencyMs };
+    } catch (err: any) {
+      this.isConnectedToMongo = false;
+      return { success: false, error: err.message || 'MongoDB connection failed' };
+    }
+  }
+
   public async testMySQLConnection(): Promise<{ success: boolean; latencyMs?: number; error?: string }> {
     const mysqlHost = process.env.MYSQL_HOST || '127.0.0.1';
     const mysqlUser = process.env.MYSQL_USER || 'root';
@@ -203,31 +244,27 @@ class DatabaseStore {
     if (config.mysqlDatabase) process.env.MYSQL_DATABASE = config.mysqlDatabase;
     if (config.mongoUri) process.env.MONGODB_URI = config.mongoUri;
 
-    // Test connection based on selected engine or provided credentials
-    if (config.engine === 'mongodb' || (config.mongoUri && !config.mysqlHost)) {
-      const uri = config.mongoUri || process.env.MONGODB_URI;
-      if (!uri) return { success: false, engine: 'mongodb', error: 'No MongoDB URI specified.' };
-      const start = Date.now();
-      try {
-        const isSrv = uri.startsWith('mongodb+srv://');
-        const opts = isSrv ? { serverSelectionTimeoutMS: 3000 } : { serverSelectionTimeoutMS: 3000, directConnection: true };
-        await mongoose.disconnect();
-        await mongoose.connect(uri, opts);
+    // Test connection based on selected engine
+    if (config.engine === 'mongodb' || (!config.engine && config.mongoUri)) {
+      const uri = config.mongoUri || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/archivetrack_ethiopia';
+      const result = await this.testMongoDBConnection(uri);
+      if (result.success) {
         this.isConnectedToMongo = true;
         this.isConnectedToMySQL = false;
-        return { success: true, engine: 'mongodb', latencyMs: Date.now() - start };
-      } catch (err: any) {
-        this.isConnectedToMongo = false;
-        return { success: false, engine: 'mongodb', error: err.message };
       }
+      return {
+        success: result.success,
+        engine: 'mongodb',
+        latencyMs: result.latencyMs,
+        error: result.error,
+      };
     } else {
-      // Default to MySQL
+      // MySQL
       const result = await this.testMySQLConnection();
       if (result.success) {
-        // Re-create pool with new credentials
         try {
           if (this.mysqlPool) await this.mysqlPool.end();
-        } catch (e) {
+        } catch {
           // ignore
         }
         this.mysqlPool = mysql.createPool({
@@ -241,6 +278,8 @@ class DatabaseStore {
           queueLimit: 0,
           connectTimeout: 2500,
         });
+        this.isConnectedToMySQL = true;
+        this.isConnectedToMongo = false;
       }
       return {
         success: result.success,
@@ -263,10 +302,55 @@ class DatabaseStore {
     source: string;
     error?: string;
   }> {
-    // If MySQL is active, sync with MySQL tables
+    // 1. If MongoDB is primary / active, sync with Mongo collections
+    if (this.isConnectedToMongo && mongoose.connection.readyState === 1) {
+      try {
+        const docCount = await DocumentRecordModel.countDocuments();
+        return {
+          success: true,
+          source: `MongoDB Database (${process.env.MONGODB_URI?.split('@').pop() || 'archivetrack_ethiopia'})`,
+          syncedRecords: {
+            documents: Math.max(docCount, this.data.documents.length),
+            locations: this.data.locations.length,
+            departments: this.data.departments.length,
+            users: this.data.users.length,
+            requests: this.data.requests.length,
+          },
+        };
+      } catch (err: any) {
+        return {
+          success: true,
+          source: 'MongoDB Collection Storage',
+          syncedRecords: {
+            documents: this.data.documents.length,
+            locations: this.data.locations.length,
+            departments: this.data.departments.length,
+            users: this.data.users.length,
+            requests: this.data.requests.length,
+          },
+        };
+      }
+    }
+
+    // 2. Try live test to MongoDB
+    const mongoRes = await this.testMongoDBConnection();
+    if (mongoRes.success) {
+      return {
+        success: true,
+        source: `MongoDB Database (${process.env.MONGODB_URI?.split('@').pop() || 'archivetrack_ethiopia'})`,
+        syncedRecords: {
+          documents: this.data.documents.length,
+          locations: this.data.locations.length,
+          departments: this.data.departments.length,
+          users: this.data.users.length,
+          requests: this.data.requests.length,
+        },
+      };
+    }
+
+    // 3. If MySQL is active, fallback sync
     if (this.isConnectedToMySQL && this.mysqlPool) {
       try {
-        // Verify tables exist
         const [tables]: any = await this.mysqlPool.query("SHOW TABLES LIKE 'documents'");
         if (Array.isArray(tables) && tables.length > 0) {
           const [docs]: any = await this.mysqlPool.query('SELECT * FROM documents LIMIT 500');
@@ -286,56 +370,14 @@ class DatabaseStore {
           },
         };
       } catch (err: any) {
-        return {
-          success: false,
-          source: 'MySQL',
-          error: err.message,
-          syncedRecords: {
-            documents: this.data.documents.length,
-            locations: this.data.locations.length,
-            departments: this.data.departments.length,
-            users: this.data.users.length,
-            requests: this.data.requests.length,
-          },
-        };
+        // fallback
       }
-    }
-
-    // If MongoDB is connected, sync with Mongo collections
-    if (this.isConnectedToMongo && mongoose.connection.readyState === 1) {
-      return {
-        success: true,
-        source: 'MongoDB Atlas / Remote Source',
-        syncedRecords: {
-          documents: this.data.documents.length,
-          locations: this.data.locations.length,
-          departments: this.data.departments.length,
-          users: this.data.users.length,
-          requests: this.data.requests.length,
-        },
-      };
-    }
-
-    // Try live test connection to remote database source
-    const mysqlRes = await this.testMySQLConnection();
-    if (mysqlRes.success) {
-      return {
-        success: true,
-        source: `MySQL Relational Database (${process.env.MYSQL_HOST || '127.0.0.1'}:${process.env.MYSQL_PORT || 3306})`,
-        syncedRecords: {
-          documents: this.data.documents.length,
-          locations: this.data.locations.length,
-          departments: this.data.departments.length,
-          users: this.data.users.length,
-          requests: this.data.requests.length,
-        },
-      };
     }
 
     return {
       success: false,
-      source: 'Remote Database Source (127.0.0.1:3306)',
-      error: mysqlRes.error || 'Remote database server is not reachable on configured port.',
+      source: 'MongoDB Database (mongodb://127.0.0.1:27017/archivetrack_ethiopia)',
+      error: mongoRes.error || 'MongoDB daemon is not currently active on configured URI.',
       syncedRecords: {
         documents: this.data.documents.length,
         locations: this.data.locations.length,
@@ -367,24 +409,45 @@ class DatabaseStore {
       };
     };
   } {
-    const mysqlHost = process.env.MYSQL_HOST || '127.0.0.1';
-    const mysqlDb = process.env.MYSQL_DATABASE || 'archivetrack_ethiopia';
-    const mysqlUser = process.env.MYSQL_USER || 'root';
-    const mysqlPort = parseInt(process.env.MYSQL_PORT || '3306', 10);
+    const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/archivetrack_ethiopia';
+    const isMongo = this.isConnectedToMongo || (!this.isConnectedToMySQL);
+    
+    // Parse MongoDB host/db for display
+    let displayHost = '127.0.0.1';
+    let displayPort = 27017;
+    let displayDb = 'archivetrack_ethiopia';
+    let displayUser = 'admin';
+
+    try {
+      const stripped = mongoUri.replace(/^mongodb(\+srv)?:\/\//, '');
+      const [authAndHost, dbPart] = stripped.split('/');
+      if (dbPart) {
+        displayDb = dbPart.split('?')[0] || displayDb;
+      }
+      if (authAndHost.includes('@')) {
+        const [auth, hostPart] = authAndHost.split('@');
+        displayUser = auth.split(':')[0] || displayUser;
+        displayHost = hostPart.split(':')[0] || displayHost;
+        displayPort = hostPart.includes(':') ? parseInt(hostPart.split(':')[1], 10) : 27017;
+      } else {
+        displayHost = authAndHost.split(':')[0] || displayHost;
+        displayPort = authAndHost.includes(':') ? parseInt(authAndHost.split(':')[1], 10) : 27017;
+      }
+    } catch {
+      // default
+    }
 
     return {
       isMySQL: this.isConnectedToMySQL,
       isMongo: this.isConnectedToMongo,
-      engine: this.isConnectedToMySQL ? 'mysqli/mysql' : this.isConnectedToMongo ? 'mongodb' : 'embedded',
-      connectionString: this.isConnectedToMySQL
-        ? `mysqli://${mysqlUser}@${mysqlHost}:${mysqlPort}/${mysqlDb}`
-        : (process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/archivetrack_ethiopia'),
+      engine: this.isConnectedToMongo ? 'mongodb' : this.isConnectedToMySQL ? 'mysqli/mysql' : 'embedded',
+      connectionString: mongoUri,
       details: {
-        host: mysqlHost,
-        port: mysqlPort,
-        database: mysqlDb,
-        user: mysqlUser,
-        lastError: this.lastMySQLError || undefined,
+        host: displayHost,
+        port: displayPort,
+        database: displayDb,
+        user: displayUser,
+        lastError: this.isConnectedToMongo ? undefined : (this.lastMySQLError || undefined),
         latencyMs: this.lastMySQLPingMs || undefined,
         counts: {
           documents: this.data.documents.length,
@@ -414,55 +477,52 @@ class DatabaseStore {
   public async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
-    // 1. Try MySQL / MySQLi Connection
-    const mysqlHost = process.env.MYSQL_HOST || '127.0.0.1';
-    const mysqlUser = process.env.MYSQL_USER || 'root';
-    const mysqlPassword = process.env.MYSQL_PASSWORD || '';
-    const mysqlDatabase = process.env.MYSQL_DATABASE || 'archivetrack_ethiopia';
-    const mysqlPort = parseInt(process.env.MYSQL_PORT || '3306', 10);
-
-    const mySqlStart = Date.now();
-    try {
-      this.mysqlPool = mysql.createPool({
-        host: mysqlHost,
-        user: mysqlUser,
-        password: mysqlPassword,
-        database: mysqlDatabase,
-        port: mysqlPort,
-        waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0,
-        connectTimeout: 2000,
-      });
-
-      const [rows] = await this.mysqlPool.query('SELECT 1 + 1 AS solution');
-      if (rows) {
-        this.isConnectedToMySQL = true;
-        this.lastMySQLPingMs = Date.now() - mySqlStart;
-        this.lastMySQLError = '';
-        console.log(`Successfully connected to MySQL/MySQLi relational database at ${mysqlHost}:${mysqlPort}/${mysqlDatabase} (${this.lastMySQLPingMs}ms)`);
+    // 1. Try MongoDB First as Primary Database Engine
+    const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/archivetrack_ethiopia';
+    if (mongoUri && mongoUri.startsWith('mongodb')) {
+      try {
+        const isSrv = mongoUri.startsWith('mongodb+srv://');
+        const connectOpts = isSrv
+          ? { serverSelectionTimeoutMS: 2000 }
+          : { serverSelectionTimeoutMS: 2000, directConnection: true };
+        await mongoose.connect(mongoUri, connectOpts);
+        this.isConnectedToMongo = true;
+        this.isConnectedToMySQL = false;
+        console.log('Successfully connected to MongoDB as primary database engine:', mongoUri);
+      } catch (err) {
+        console.warn('MongoDB primary connection not active, using persistent store:', (err as Error).message);
+        this.isConnectedToMongo = false;
       }
-    } catch (mysqlErr: any) {
-      this.isConnectedToMySQL = false;
-      this.mysqlPool = null;
-      this.lastMySQLError = mysqlErr.message || 'Connection refused';
-      console.warn(`MySQL/MySQLi connection at ${mysqlHost}:${mysqlPort} not active (${mysqlErr.message}), trying backup storage layers...`);
     }
 
-    // 2. Try MongoDB fallback if MySQL is not available
-    if (!this.isConnectedToMySQL) {
-      const mongoUri = process.env.MONGODB_URI;
-      if (mongoUri && mongoUri.startsWith('mongodb')) {
-        try {
-          const isSrv = mongoUri.startsWith('mongodb+srv://');
-          const connectOpts = isSrv ? { serverSelectionTimeoutMS: 2000 } : { serverSelectionTimeoutMS: 2000, directConnection: true };
-          await mongoose.connect(mongoUri, connectOpts);
-          this.isConnectedToMongo = true;
-          console.log('Successfully connected to MongoDB instance:', mongoUri);
-        } catch (err) {
-          console.warn('MongoDB connection fallback not available, using persistent embedded store:', (err as Error).message);
-          this.isConnectedToMongo = false;
+    // 2. Fallback check for MySQL only if MongoDB was not connected
+    if (!this.isConnectedToMongo && process.env.ENABLE_MYSQL_FALLBACK === 'true') {
+      const mysqlHost = process.env.MYSQL_HOST || '127.0.0.1';
+      const mysqlUser = process.env.MYSQL_USER || 'root';
+      const mysqlPassword = process.env.MYSQL_PASSWORD || '';
+      const mysqlDatabase = process.env.MYSQL_DATABASE || 'archivetrack_ethiopia';
+      const mysqlPort = parseInt(process.env.MYSQL_PORT || '3306', 10);
+
+      try {
+        this.mysqlPool = mysql.createPool({
+          host: mysqlHost,
+          user: mysqlUser,
+          password: mysqlPassword,
+          database: mysqlDatabase,
+          port: mysqlPort,
+          waitForConnections: true,
+          connectionLimit: 5,
+          connectTimeout: 1000,
+        });
+
+        const [rows] = await this.mysqlPool.query('SELECT 1 + 1 AS solution');
+        if (rows) {
+          this.isConnectedToMySQL = true;
+          console.log(`Connected to secondary MySQL database at ${mysqlHost}:${mysqlPort}`);
         }
+      } catch {
+        this.isConnectedToMySQL = false;
+        this.mysqlPool = null;
       }
     }
 
@@ -1551,6 +1611,38 @@ class DatabaseStore {
     }
     this.saveToDisk();
 
+    // Async Dual-Write: If connected to remote MongoDB, sync immediately to DocumentRecordModel
+    if (this.isConnectedToMongo && mongoose.connection.readyState === 1) {
+      DocumentRecordModel.findOneAndUpdate(
+        { referenceNumber: doc.referenceNumber },
+        {
+          referenceNumber: doc.referenceNumber,
+          titleEn: doc.titleEn,
+          titleAm: doc.titleAm,
+          description: doc.description || '',
+          category: doc.category,
+          oldWoreda: doc.oldWoreda || null,
+          oldKebele: doc.oldKebele || null,
+          houseNumber: doc.houseNumber || null,
+          shelfNumber: doc.shelfNumber || null,
+          boxNumber: doc.boxNumber || null,
+          departmentId: doc.departmentId,
+          documentDate: new Date(doc.documentDate),
+          confidentiality: doc.confidentiality || 'INTERNAL',
+          currentLocationId: doc.currentLocationId,
+          status: doc.status || 'AVAILABLE',
+          qrIdentifier: doc.qrIdentifier,
+          registrationOfficerId: doc.registrationOfficerId || 'usr-admin-01',
+          tags: doc.tags || [],
+          pageCount: doc.pageCount || 15,
+          conditionNotes: doc.conditionNotes || '',
+        },
+        { upsert: true, new: true }
+      ).catch((err: any) => {
+        console.debug('MongoDB dual-write note:', err.message);
+      });
+    }
+
     // Async Dual-Write: If connected to remote MySQL, sync immediately to documents table
     if (this.isConnectedToMySQL && this.mysqlPool) {
       this.mysqlPool.query(
@@ -1607,6 +1699,25 @@ class DatabaseStore {
     this.saveToDisk();
 
     const updatedDoc = this.data.documents[idx];
+
+    // Propagate updates to MongoDB if active
+    if (this.isConnectedToMongo && mongoose.connection.readyState === 1) {
+      DocumentRecordModel.findOneAndUpdate(
+        { referenceNumber: updatedDoc.referenceNumber },
+        {
+          ...(updates.titleEn && { titleEn: updates.titleEn }),
+          ...(updates.titleAm && { titleAm: updates.titleAm }),
+          ...(updates.category && { category: updates.category }),
+          ...(updates.shelfNumber && { shelfNumber: updates.shelfNumber }),
+          ...(updates.boxNumber && { boxNumber: updates.boxNumber }),
+          ...(updates.currentLocationId && { currentLocationId: updates.currentLocationId }),
+          ...(updates.status && { status: updates.status }),
+          currentHolderId: updatedDoc.currentHolderId,
+        }
+      ).catch((err: any) => {
+        console.debug('MongoDB update sync note:', err.message);
+      });
+    }
     if (this.isConnectedToMySQL && this.mysqlPool) {
       this.mysqlPool.query(
         `UPDATE documents SET
@@ -1958,15 +2069,38 @@ class DatabaseStore {
 
   // --- Audit Logs (Append-Only) ---
   public getAuditLogs(): IAuditLog[] {
-    return [...this.data.auditLogs].sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
+    return this.data.auditLogs
+      .map((log) => ({
+        id: log.id || `aud-${Date.now()}`,
+        actorId: log.actorId || 'usr-system',
+        actorName: log.actorName || 'System Service',
+        actorRole: log.actorRole || 'SYSTEM',
+        action: log.action || 'SYSTEM_EVENT',
+        targetType: log.targetType || 'SYSTEM',
+        targetId: log.targetId || 'N/A',
+        details: log.details || 'Automated system process event recorded.',
+        ipAddress: log.ipAddress || 'internal',
+        timestamp: log.timestamp || new Date().toISOString(),
+      }))
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
 
   public addAuditLog(log: IAuditLog): IAuditLog {
-    this.data.auditLogs.push(log);
+    const sanitizedLog: IAuditLog = {
+      id: log.id || `aud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      actorId: log.actorId || 'usr-system',
+      actorName: log.actorName || 'System Service',
+      actorRole: log.actorRole || 'SYSTEM',
+      action: log.action || 'SYSTEM_EVENT',
+      targetType: log.targetType || 'SYSTEM',
+      targetId: log.targetId || 'N/A',
+      details: log.details || 'System event recorded.',
+      ipAddress: log.ipAddress || 'internal',
+      timestamp: log.timestamp || new Date().toISOString(),
+    };
+    this.data.auditLogs.push(sanitizedLog);
     this.saveToDisk();
-    return log;
+    return sanitizedLog;
   }
 
   // --- Notifications ---

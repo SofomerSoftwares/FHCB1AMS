@@ -5,12 +5,15 @@ import {
   Menu,
   ChevronDown,
   Volume2,
+  VolumeX,
   Sliders,
   Vibrate,
   VibrateOff,
   Shield,
   Building,
   CheckCircle2,
+  Info,
+  HelpCircle,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
@@ -36,7 +39,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate }) =
     testVibration,
     vibrationSettings,
     updateVibrationSettings,
+    soundEnabled,
+    toggleSound,
   } = useNotification();
+
+  const [showBlockedGuide, setShowBlockedGuide] = useState<boolean>(false);
 
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
   const [showProfileMenu, setShowProfileMenu] = useState<boolean>(false);
@@ -190,12 +197,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate }) =
 
               {/* Notification Preferences & Quick Action */}
               <div className="mt-2.5 mb-2 rounded-lg bg-slate-50 p-2.5 border border-slate-200/80 text-xs space-y-2">
-                {/* Browser Alert Preference */}
+                {/* Desktop Notification Permission */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-1.5">
-                    <Volume2 className="h-3.5 w-3.5 text-emerald-700" />
+                    <Bell className="h-3.5 w-3.5 text-slate-700" />
                     <span className="font-semibold text-slate-800">
-                      {isAmharic ? 'የአሳሽ ማሳወቂያ እና ድምፅ' : 'Browser Alerts & Sound'}
+                      {isAmharic ? 'የስክሪን ላይ ማሳወቂያ' : 'Desktop Popups'}
                     </span>
                   </div>
                   {permission === 'granted' ? (
@@ -203,17 +210,70 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate }) =
                       {isAmharic ? 'ነቅቷል' : 'Active'}
                     </span>
                   ) : permission === 'denied' ? (
-                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800 border border-rose-200">
-                      {isAmharic ? 'ተዘግቷል' : 'Blocked'}
-                    </span>
+                    <div className="flex items-center space-x-1">
+                      <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800 border border-rose-200">
+                        {isAmharic ? 'በአሳሹ ተዘግቷል' : 'Blocked in Browser'}
+                      </span>
+                      <button
+                        onClick={() => setShowBlockedGuide(!showBlockedGuide)}
+                        className="text-slate-400 hover:text-slate-700 transition"
+                        title={isAmharic ? 'እንዴት መክፈት እንደሚቻል' : 'How to unblock'}
+                      >
+                        <HelpCircle className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   ) : (
                     <button
                       onClick={requestPermission}
-                      className="rounded-md bg-emerald-700 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-emerald-800 transition cursor-pointer"
+                      className="rounded-md bg-emerald-700 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-emerald-800 transition cursor-pointer shadow-xs"
                     >
                       {isAmharic ? 'ፍቀድ' : 'Enable'}
                     </button>
                   )}
+                </div>
+
+                {/* Unblock Helper Accordion if Blocked */}
+                {permission === 'denied' && showBlockedGuide && (
+                  <div className="rounded-md bg-rose-50 p-2 text-[10px] text-rose-900 border border-rose-200 leading-normal space-y-1">
+                    <p className="font-bold flex items-center space-x-1">
+                      <Info className="h-3 w-3 text-rose-600" />
+                      <span>{isAmharic ? 'የአሳሽ ማሳወቂያን እንዴት መፍቀድ ይቻላል?' : 'How to Unblock in Your Browser:'}</span>
+                    </p>
+                    <ol className="list-decimal list-inside space-y-0.5 text-slate-700 pl-1">
+                      <li>{isAmharic ? 'በአሳሹ የአድራሻ አሞሌ (Address Bar) ግራ በኩል ያለውን የመቆለፊያ/ቅንብር ምልክት ይጫኑ' : 'Click the Lock / Tune icon (left of URL in address bar)'}</li>
+                      <li>{isAmharic ? '«Notifications» ወይም «ማሳወቂያዎች» የሚለውን ወደ «Allow / ፍቀድ» ይቀይሩ' : 'Find "Notifications" and change to "Allow"'}</li>
+                      <li>{isAmharic ? 'ገጹን ያድሱ (Reload/Refresh)' : 'Reload this page (F5)'}</li>
+                    </ol>
+                    <p className="text-[9px] text-emerald-800 font-semibold pt-1">
+                      {isAmharic ? '✓ ማስታወሻ፡ የስርዓቱ ውስጣዊ የድምፅ እና የንዝረት ማሳወቂያዎች ያለ አሳሽ ፈቃድም ይሰራሉ።' : '✓ Note: In-app popups, Web Audio chimes, and haptic vibrations operate automatically.'}
+                    </p>
+                  </div>
+                )}
+
+                {/* Independent Audio Sound Toggle */}
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200/70">
+                  <div className="flex items-center space-x-1.5">
+                    {soundEnabled ? (
+                      <Volume2 className="h-3.5 w-3.5 text-emerald-700" />
+                    ) : (
+                      <VolumeX className="h-3.5 w-3.5 text-slate-400" />
+                    )}
+                    <span className="font-semibold text-slate-800">
+                      {isAmharic ? 'የድምፅ ምልክት (Audio Chime)' : 'Audio Alert Chime'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => toggleSound(!soundEnabled)}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold transition border cursor-pointer ${
+                      soundEnabled
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-200'
+                        : 'bg-slate-200 text-slate-600 border-slate-300 hover:bg-slate-300'
+                    }`}
+                  >
+                    {soundEnabled
+                      ? isAmharic ? 'ነቅቷል' : 'Active'
+                      : isAmharic ? 'ዝም' : 'Muted'}
+                  </button>
                 </div>
 
                 {/* Vibration Feedback */}

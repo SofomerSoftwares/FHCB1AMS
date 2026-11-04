@@ -41,7 +41,34 @@ apiRouter.get('/health', (_req, res) => {
   });
 });
 
-// Admin Database Station Health & Test Connection Route
+// Admin Database Station Health & Test Connection Route (Supports MongoDB & MySQL)
+apiRouter.post('/system/test-database', authMiddleware, requireRole('ADMIN'), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { engine, uri } = req.body || {};
+    let result: { success: boolean; latencyMs?: number; error?: string };
+
+    if (engine === 'mysql') {
+      result = await db.testMySQLConnection();
+    } else {
+      result = await db.testMongoDBConnection(uri);
+    }
+
+    const currentStatus = db.getDatabaseStatus();
+    return res.json({
+      ...result,
+      database: {
+        connectedToMySQL: currentStatus.isMySQL,
+        connectedToMongo: currentStatus.isMongo,
+        storageEngine: currentStatus.engine,
+        targetConnection: currentStatus.connectionString,
+        details: currentStatus.details,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to ping database instance.' });
+  }
+});
+
 apiRouter.post('/system/test-mysql', authMiddleware, requireRole('ADMIN'), async (_req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await db.testMySQLConnection();

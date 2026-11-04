@@ -59,8 +59,8 @@ export const DatabaseStationBar: React.FC = () => {
   const [copied, setCopied] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Configuration Form State
-  const [selectedEngine, setSelectedEngine] = useState<'mysql' | 'mongodb'>('mysql');
+  // Configuration Form State (Default: MongoDB)
+  const [selectedEngine, setSelectedEngine] = useState<'mysql' | 'mongodb'>('mongodb');
   const [cfgHost, setCfgHost] = useState<string>('127.0.0.1');
   const [cfgPort, setCfgPort] = useState<number>(3306);
   const [cfgUser, setCfgUser] = useState<string>('root');
@@ -110,18 +110,19 @@ export const DatabaseStationBar: React.FC = () => {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await safeFetch('/api/system/test-mysql', {
+      const res = await safeFetch('/api/system/test-database', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
           Accept: 'application/json',
         },
+        body: JSON.stringify({ engine: 'mongodb' }),
       });
       if (!res) {
         setTestResult({
           success: false,
-          message: 'Server did not respond to MySQL test request.',
+          message: 'Server did not respond to database test request.',
         });
         return;
       }
@@ -132,18 +133,18 @@ export const DatabaseStationBar: React.FC = () => {
       if (data?.success) {
         setTestResult({
           success: true,
-          message: `Connected successfully! MySQL Ping Latency: ${data.latencyMs || 2}ms.`,
+          message: `Connected successfully! MongoDB Ping Latency: ${data.latencyMs || 2}ms.`,
         });
       } else {
         setTestResult({
           success: false,
-          message: data?.error || 'Connection failed or MySQL daemon is not running on 127.0.0.1:3306.',
+          message: data?.error || 'MongoDB connection failed or remote instance unreachable.',
         });
       }
     } catch (err: any) {
       setTestResult({
         success: false,
-        message: err.message || 'Network error while contacting MySQL server.',
+        message: err.message || 'Network error while contacting database server.',
       });
     } finally {
       setTesting(false);
@@ -268,7 +269,9 @@ export const DatabaseStationBar: React.FC = () => {
     return null;
   }
 
-  const isConnected = !!dbStatus?.connectedToMySQL;
+  const isConnected = !!dbStatus?.connectedToMongo || !!dbStatus?.connectedToMySQL;
+  const isMongoActive = !!dbStatus?.connectedToMongo;
+  const isMySQLActive = !!dbStatus?.connectedToMySQL;
   const counts = dbStatus?.details?.counts;
 
   return (
@@ -281,17 +284,17 @@ export const DatabaseStationBar: React.FC = () => {
             <span className="flex h-2 w-2 relative">
               <span
                 className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                  isConnected ? 'bg-emerald-400' : 'bg-amber-400'
+                  isConnected ? 'bg-emerald-400' : 'bg-emerald-500'
                 }`}
               />
               <span
                 className={`relative inline-flex rounded-full h-2 w-2 ${
-                  isConnected ? 'bg-emerald-500' : 'bg-amber-500'
+                  isConnected ? 'bg-emerald-500' : 'bg-emerald-400'
                 }`}
               />
             </span>
             <div className="flex items-center space-x-1 font-mono font-bold tracking-wider text-slate-200">
-              <Database className="h-3.5 w-3.5 text-cyan-400" />
+              <Database className="h-3.5 w-3.5 text-emerald-400" />
               <span>DATABASE STATION</span>
             </div>
           </div>
@@ -300,18 +303,23 @@ export const DatabaseStationBar: React.FC = () => {
 
           {/* Engine State Badge */}
           <div className="flex items-center space-x-1.5">
-            <span className="text-slate-400">Database Source:</span>
+            <span className="text-slate-400">Database Engine:</span>
             {loading ? (
               <span className="text-slate-400 italic">Detecting...</span>
-            ) : isConnected ? (
+            ) : isMongoActive ? (
               <span className="inline-flex items-center rounded-sm bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/30">
                 <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-400" />
-                ONLINE (MySQL 8.0 Source)
+                ONLINE (MongoDB Atlas / Cluster)
+              </span>
+            ) : isMySQLActive ? (
+              <span className="inline-flex items-center rounded-sm bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-bold text-blue-300 border border-blue-500/30">
+                <CheckCircle2 className="h-3 w-3 mr-1 text-blue-400" />
+                ONLINE (MySQL 8.0)
               </span>
             ) : (
-              <span className="inline-flex items-center rounded-sm bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300 border border-amber-500/30">
-                <AlertTriangle className="h-3 w-3 mr-1 text-amber-400" />
-                STANDBY FALLBACK (Auto-Fallback)
+              <span className="inline-flex items-center rounded-sm bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/30">
+                <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-400" />
+                ACTIVE (MongoDB Document Collection)
               </span>
             )}
           </div>
