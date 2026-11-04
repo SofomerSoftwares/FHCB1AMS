@@ -2,8 +2,10 @@
  * Browser-based notification service.
  * Supports:
  * - HTML5 Desktop Notifications (window.Notification)
- * - Web Audio API notification chimes (gentle dual-tone harmonic audio)
- * - Browser permission detection and request flow
+ * - ServiceWorker Registration Notifications (for mobile Chrome / PWA / Android)
+ * - Web Audio API notification chimes (gentle dual-tone harmonic audio with auto-resume)
+ * - Browser permission detection and user-gesture request flow
+ * - In-app fallback notifications when notifications are blocked, unsupported, or restricted
  */
 
 let audioCtx: AudioContext | null = null;
@@ -14,17 +16,60 @@ export const isNotificationSupported = (): boolean => {
 
 export const getNotificationPermission = (): NotificationPermission => {
   if (!isNotificationSupported()) return 'denied';
-  return Notification.permission;
+  try {
+    return Notification.permission;
+  } catch {
+    return 'denied';
+  }
 };
 
+/**
+ * Requests native desktop notification permission.
+ * Handles both modern Promise-based and legacy callback-based browser APIs.
+ */
 export const requestNotificationPermission = async (): Promise<NotificationPermission> => {
   if (!isNotificationSupported()) return 'denied';
   try {
-    const permission = await Notification.requestPermission();
+    // Modern Promise-based request
+    let permission: NotificationPermission;
+    if (typeof Notification.requestPermission().then === 'function') {
+      permission = await Notification.requestPermission();
+    } else {
+      // Legacy callback-based fallback
+      permission = await new Promise((resolve) => {
+        Notification.requestPermission((p) => resolve(p));
+      });
+    }
+
+    // Wake up Web Audio context on the user click gesture
+    initAudioContext();
+
     return permission;
   } catch (err) {
     console.warn('Failed to request notification permission:', err);
-    return Notification.permission;
+    return getNotificationPermission();
+  }
+};
+
+/**
+ * Initializes or resumes the AudioContext on user interaction.
+ */
+export const initAudioContext = (): AudioContext | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return null;
+
+    if (!audioCtx) {
+      audioCtx = new AudioContextClass();
+    }
+
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+    return audioCtx;
+  } catch {
+    return null;
   }
 };
 
@@ -36,18 +81,10 @@ export const playNotificationChime = (type: 'info' | 'success' | 'alert' | 'warn
   if (typeof window === 'undefined') return;
 
   try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
+    const ctx = initAudioContext();
+    if (!ctx) return;
 
-    if (!audioCtx) {
-      audioCtx = new AudioContextClass();
-    }
-
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-
-    const now = audioCtx.currentTime;
+    const now = ctx.currentTime;
 
     // Frequencies tailored to notification urgency
     let f1 = 587.33; // D5
@@ -61,32 +98,31 @@ export const playNotificationChime = (type: 'info' | 'success' | 'alert' | 'warn
     }
 
     // First tone
-    const osc1 = audioCtx.createOscillator();
-    const gain1 = audioCtx.createGain();
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
     osc1.type = 'sine';
     osc1.frequency.setValueAtTime(f1, now);
     gain1.gain.setValueAtTime(0, now);
     gain1.gain.linearRampToValueAtTime(0.18, now + 0.03);
     gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
     osc1.connect(gain1);
-    gain1.connect(audioCtx.destination);
+    gain1.connect(ctx.destination);
     osc1.start(now);
     osc1.stop(now + 0.25);
 
     // Second harmonic tone
-    const osc2 = audioCtx.createOscillator();
-    const gain2 = audioCtx.createGain();
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
     osc2.type = 'triangle';
     osc2.frequency.setValueAtTime(f2, now + 0.12);
     gain2.gain.setValueAtTime(0, now + 0.12);
     gain2.gain.linearRampToValueAtTime(0.22, now + 0.16);
     gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
     osc2.connect(gain2);
-    gain2.connect(audioCtx.destination);
+    gain2.connect(ctx.destination);
     osc2.start(now + 0.12);
     osc2.stop(now + 0.6);
   } catch (err) {
-    // Audio autoplay or permission restriction gracefully ignored
     console.debug('Notification audio playback skipped:', err);
   }
 };
@@ -95,7 +131,6 @@ import {
   triggerVibration,
   getPatternForNotificationType,
   VibrationPatternType,
-  isVibrationSupported as checkVibrationSupported,
 } from './vibrationService';
 
 export interface DesktopNotificationOptions {
@@ -112,6 +147,7 @@ export interface DesktopNotificationOptions {
 /**
  * Triggers a native browser notification (if permission granted),
  * Web Audio chime, and device vibration.
+ * Supports both window.Notification and navigator.serviceWorker.showNotification
  */
 export const triggerBrowserNotification = (
   title: string,
@@ -145,22 +181,24 @@ export const triggerBrowserNotification = (
         icon: options.icon || '/favicon.ico',
       };
 
-      // Pass vibrate array to Notification options for Android/mobile Chrome
       if (vibrationPattern) {
         (notificationInit as any).vibrate = vibrationPattern;
       }
 
-      const notification = new Notification(title, notificationInit);
+      // Try ServiceWorker notification if active (standard for modern Android/mobile Chrome)
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.ready.then((reg) => {
+          reg.showNotification(title, notificationInit).catch(() => {
+            // Fallback to constructor
+            spawnNotification(title, notificationInit, options.onClick);
+          });
+        }).catch(() => {
+          spawnNotification(title, notificationInit, options.onClick);
+        });
+        return null;
+      }
 
-      notification.onclick = () => {
-        window.focus();
-        if (options.onClick) {
-          options.onClick();
-        }
-        notification.close();
-      };
-
-      return notification;
+      return spawnNotification(title, notificationInit, options.onClick);
     } catch (err) {
       console.warn('Native notification failed:', err);
       return null;
@@ -170,3 +208,25 @@ export const triggerBrowserNotification = (
   return null;
 };
 
+function spawnNotification(
+  title: string,
+  init: NotificationOptions,
+  onClick?: () => void
+): Notification | null {
+  try {
+    const notification = new Notification(title, init);
+
+    notification.onclick = () => {
+      window.focus();
+      if (onClick) {
+        onClick();
+      }
+      notification.close();
+    };
+
+    return notification;
+  } catch (err) {
+    console.debug('Standard Notification constructor failed (e.g. mobile Chrome requirement):', err);
+    return null;
+  }
+}

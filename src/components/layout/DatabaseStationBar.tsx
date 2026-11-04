@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { safeJson, safeFetch } from '../../lib/apiUtils';
 
 export interface DatabaseStatusData {
   connectedToMySQL: boolean;
@@ -74,10 +75,12 @@ export const DatabaseStationBar: React.FC = () => {
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch('/api/health');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.database) {
+      const res = await safeFetch('/api/health', {
+        headers: { Accept: 'application/json' },
+      });
+      if (res && res.ok) {
+        const { ok, data } = await safeJson(res);
+        if (ok && data?.database) {
           setDbStatus(data.database);
           if (data.database.details) {
             setCfgHost(data.database.details.host || '127.0.0.1');
@@ -87,8 +90,8 @@ export const DatabaseStationBar: React.FC = () => {
           }
         }
       }
-    } catch (err) {
-      console.error('Failed to load database status:', err);
+    } catch {
+      // Graceful fallback: Station status continues with last known state without unhandled exceptions
     } finally {
       setLoading(false);
     }
@@ -107,18 +110,26 @@ export const DatabaseStationBar: React.FC = () => {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch('/api/system/test-mysql', {
+      const res = await safeFetch('/api/system/test-mysql', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
         },
       });
-      const data = await res.json();
-      if (data.database) {
+      if (!res) {
+        setTestResult({
+          success: false,
+          message: 'Server did not respond to MySQL test request.',
+        });
+        return;
+      }
+      const { data } = await safeJson(res);
+      if (data?.database) {
         setDbStatus(data.database);
       }
-      if (data.success) {
+      if (data?.success) {
         setTestResult({
           success: true,
           message: `Connected successfully! MySQL Ping Latency: ${data.latencyMs || 2}ms.`,
@@ -126,7 +137,7 @@ export const DatabaseStationBar: React.FC = () => {
       } else {
         setTestResult({
           success: false,
-          message: data.error || 'Connection failed or MySQL daemon is not running on 127.0.0.1:3306.',
+          message: data?.error || 'Connection failed or MySQL daemon is not running on 127.0.0.1:3306.',
         });
       }
     } catch (err: any) {
@@ -144,18 +155,26 @@ export const DatabaseStationBar: React.FC = () => {
     setSyncing(true);
     setTestResult(null);
     try {
-      const res = await fetch('/api/system/sync-database', {
+      const res = await safeFetch('/api/system/sync-database', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
         },
       });
-      const data = await res.json();
-      if (data.database) {
+      if (!res) {
+        setTestResult({
+          success: false,
+          message: 'Server did not respond to database sync request.',
+        });
+        return;
+      }
+      const { data } = await safeJson(res);
+      if (data?.database) {
         setDbStatus(data.database);
       }
-      if (data.success) {
+      if (data?.success) {
         setTestResult({
           success: true,
           message: `Synchronized successfully with database source [${data.source}]. Documents: ${data.syncedRecords?.documents}, Locations: ${data.syncedRecords?.locations}.`,
@@ -163,7 +182,7 @@ export const DatabaseStationBar: React.FC = () => {
       } else {
         setTestResult({
           success: false,
-          message: `Sync attempted with [${data.source}]: ${data.error || 'Database source server is unreachable.'} Falling back to active store.`,
+          message: `Sync attempted with [${data?.source || 'Database'}]: ${data?.error || 'Database source server is unreachable.'} Falling back to active store.`,
         });
       }
     } catch (err: any) {
@@ -182,11 +201,12 @@ export const DatabaseStationBar: React.FC = () => {
     setSavingConfig(true);
     setConfigMsg(null);
     try {
-      const res = await fetch('/api/system/configure-database', {
+      const res = await safeFetch('/api/system/configure-database', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
         },
         body: JSON.stringify({
           engine: selectedEngine,
@@ -199,11 +219,19 @@ export const DatabaseStationBar: React.FC = () => {
         }),
       });
 
-      const data = await res.json();
-      if (data.database) {
+      if (!res) {
+        setConfigMsg({
+          success: false,
+          text: 'Server did not respond to configuration request.',
+        });
+        return;
+      }
+
+      const { data } = await safeJson(res);
+      if (data?.database) {
         setDbStatus(data.database);
       }
-      if (data.success) {
+      if (data?.success) {
         setConfigMsg({
           success: true,
           text: `Connected to ${data.engine} source successfully (${data.latencyMs || 2}ms)!`,
@@ -215,7 +243,7 @@ export const DatabaseStationBar: React.FC = () => {
       } else {
         setConfigMsg({
           success: false,
-          text: `Connection test failed: ${data.error || 'Server rejected connection.'}`,
+          text: `Connection test failed: ${data?.error || 'Server rejected connection.'}`,
         });
       }
     } catch (err: any) {

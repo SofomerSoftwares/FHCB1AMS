@@ -229,9 +229,23 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           : serverNotifs.filter((n) => !n.read).length;
         setUnreadCount(count);
 
-        // On first run, mark existing as seen so we don't spam the user with history
+        // On first run, mark read/old items as seen, but if there are unread items from the last 15 minutes, notify user
         if (isFirstLoad.current) {
-          serverNotifs.forEach((n) => seenNotificationIds.current.add(n.id));
+          const recentThreshold = Date.now() - 15 * 60 * 1000;
+          serverNotifs.forEach((n) => {
+            seenNotificationIds.current.add(n.id);
+            if (!n.read && new Date(n.createdAt).getTime() > recentThreshold) {
+              notify({
+                titleEn: n.titleEn,
+                titleAm: n.titleAm,
+                messageEn: n.messageEn,
+                messageAm: n.messageAm,
+                type: n.type,
+                link: n.link,
+                sound: true,
+              });
+            }
+          });
           isFirstLoad.current = false;
           return;
         }
@@ -255,7 +269,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       }
     } catch (err) {
-      // Quiet debug log only; avoids console.error during server boot
       console.debug('Failed to poll notifications:', err);
     }
   }, [token, user, notify]);
@@ -325,10 +338,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     syncServerNotifications();
     checkReturnDeadlines();
 
-    // Poll every 10 seconds for real-time responsiveness
+    // Poll every 5 seconds for responsive real-time notifications
     const interval = setInterval(() => {
       syncServerNotifications();
-    }, 10000);
+    }, 5000);
 
     // Check return deadlines every 60 seconds
     const returnInterval = setInterval(() => {

@@ -25,3 +25,36 @@ export async function safeJson<T = any>(
     return { ok: false, data: fallback, status: res.status };
   }
 }
+
+/**
+ * Resilient fetch wrapper with retry and timeout capabilities.
+ * Handles transient network dropouts, container restarts, or proxy delays
+ * without throwing unhandled exceptions to calling components.
+ */
+export async function safeFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  retries = 2,
+  backoffMs = 500
+): Promise<Response | null> {
+  let attempt = 0;
+  while (attempt <= retries) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(input, {
+        ...init,
+        signal: init?.signal || controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return res;
+    } catch (err: any) {
+      attempt++;
+      if (attempt > retries) {
+        return null;
+      }
+      await new Promise((resolve) => setTimeout(resolve, backoffMs * attempt));
+    }
+  }
+  return null;
+}
